@@ -357,44 +357,44 @@ impl Shape {
         for _ in 0..extra {
           let color = if filled > 0 {
             filled -= 1;
-            Some(*color)
+            *color
           } else {
-            None
+            Color::Reset
           };
-          if !push_texel(Texel::colored('|', color, None), &mut buf) {
+          if !push_texel(Texel::new('|').with_fg(color), &mut buf) {
             return;
           }
         }
         for c in format!("{}", cur).chars() {
           let color = if filled > 0 {
             filled -= 1;
-            Some(*color)
+            *color
           } else {
-            None
+            Color::Reset
           };
-          if !push_texel(Texel::colored(c, color, None), &mut buf) {
+          if !push_texel(Texel::new(c).with_fg(color), &mut buf) {
             return;
           }
         }
         {
           let color = if filled > 0 {
             filled -= 1;
-            Some(*color)
+            *color
           } else {
-            None
+            Color::Reset
           };
-          if !push_texel(Texel::colored('/', color, None), &mut buf) {
+          if !push_texel(Texel::new('/').with_fg(color), &mut buf) {
             return;
           }
         }
         for c in format!("{}", max).chars() {
           let color = if filled > 0 {
             filled -= 1;
-            Some(*color)
+            *color
           } else {
-            None
+            Color::Reset
           };
-          if !push_texel(Texel::colored(c, color, None), &mut buf) {
+          if !push_texel(Texel::new(c).with_fg(color), &mut buf) {
             return;
           }
         }
@@ -415,7 +415,7 @@ impl Shape {
 
         let num = format!("{}", value);
         for c in num.chars() {
-          if !push_texel(Texel::colored(c, Some(*color), None), &mut buf) {
+          if !push_texel(Texel::new(c).with_fg(*color), &mut buf) {
             return;
           }
         }

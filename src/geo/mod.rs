@@ -416,6 +416,9 @@ impl<T: Clone> RectVec<T> {
   ///
   /// Returns `None` if `p` is out-of-bounds.
   pub fn get(&self, p: Point<i64>) -> Option<&T> {
+    if !self.dims().contains(p) {
+      return None;
+    }
     let origin = self.dims().upper_left();
     let rel = p - origin;
     let index = rel.x() + rel.y() * self.dims().width();
@@ -426,6 +429,9 @@ impl<T: Clone> RectVec<T> {
   ///
   /// Returns `None` if `p` is out-of-bounds.
   pub fn get_mut(&mut self, p: Point<i64>) -> Option<&mut T> {
+    if !self.dims().contains(p) {
+      return None;
+    }
     let origin = self.dims().upper_left();
     let rel = p - origin;
     let index = rel.x() + rel.y() * self.dims().width();

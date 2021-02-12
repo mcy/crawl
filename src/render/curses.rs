@@ -9,8 +9,7 @@
 use std::io;
 use std::time::Duration;
 
-use palette::Srgb;
-
+use crate::render::texel;
 use crate::render::texel::Texel;
 
 /// A low-level curses context.
@@ -54,40 +53,31 @@ impl<W: io::Write> Curses<W> {
   pub fn draw(&mut self, call: DrawCall) {
     use crossterm::style::Color;
     use crossterm::style::Colors;
+    let fg = match call.texel.fg() {
+      texel::Color::Rgb(rgb) => Color::Rgb {
+        r: rgb.red,
+        g: rgb.green,
+        b: rgb.blue,
+      },
+      _ => Color::Reset,
+    };
+    let bg = match call.texel.bg() {
+      texel::Color::Rgb(rgb) => Color::Rgb {
+        r: rgb.red,
+        g: rgb.green,
+        b: rgb.blue,
+      },
+      _ => Color::Reset,
+    };
+
     crossterm::queue!(
       self.w,
       crossterm::cursor::MoveTo(call.col as _, call.row as _),
       crossterm::style::SetColors(Colors {
-        foreground: Some(
-          call
-            .texel
-            .fg()
-            .map(
-              |Srgb {
-                 red: r,
-                 green: g,
-                 blue: b,
-                 ..
-               }| Color::Rgb { r, g, b }
-            )
-            .unwrap_or(Color::Reset)
-        ),
-        background: Some(
-          call
-            .texel
-            .bg()
-            .map(
-              |Srgb {
-                 red: r,
-                 green: g,
-                 blue: b,
-                 ..
-               }| Color::Rgb { r, g, b }
-            )
-            .unwrap_or(Color::Reset)
-        ),
+        foreground: Some(fg),
+        background: Some(bg),
       }),
-      crossterm::style::Print(call.texel.glyph()),
+      crossterm::style::Print(call.texel.glyph().unwrap_or(' ')),
     )
     .unwrap();
   }

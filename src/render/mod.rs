@@ -43,12 +43,9 @@ impl Renderer {
       };
 
       for p in intersection.points() {
-        let tx = *data.get(p).unwrap();
-        if tx.glyph() == '\0' {
-          continue;
-        }
-
-        *self.scratch.get_mut(p).unwrap() = tx;
+        let new = data.get(p).unwrap();
+        let old = self.scratch.get_mut(p).unwrap();
+        *old = old.add_layer(*new);
       }
     }
 
@@ -58,7 +55,7 @@ impl Renderer {
       }
       let chars = msg
         .chars()
-        .map(|c| Texel::colored(c, Some(palette::named::RED), None))
+        .map(|c| Texel::new(c).with_fg(texel::colors::RED))
         .take(viewport.width() as usize)
         .collect::<Vec<_>>();
 

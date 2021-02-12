@@ -81,24 +81,24 @@ fn main() {
       *shape = match self {
         Self::Health => Shape::Bar {
           label: Some("HP".into()),
-          fill_color: colors::RED,
+          fill_color: colors::RED.into(),
           value_range: (state.health as i32, 200),
           width_range: (10, 20),
         },
         Self::Spacer => Shape::Fill(Texel::new('\0')),
         Self::X => Shape::Scalar {
           label: Some("x: ".into()),
-          color: colors::CYAN,
+          color: colors::CYAN.into(),
           value: state.pos.x() as i32,
         },
         Self::Y => Shape::Scalar {
           label: Some(" y: ".into()),
-          color: colors::CYAN,
+          color: colors::CYAN.into(),
           value: state.pos.y() as i32,
         },
         Self::Gold => Shape::Scalar {
           label: Some("$".into()),
-          color: colors::GOLD,
+          color: colors::GOLD.into(),
           value: state.gold as i32,
         },
       }
@@ -270,10 +270,12 @@ fn main() {
     let mut view_mask = RectVec::new(viewport, Texel::new(' '));
     for fov in <&Fov>::query().iter(world) {
       for p in &fov.seen {
-        view_mask.get_mut(*p).map(|t| *t = Texel::new('\0'));
+        view_mask
+          .get_mut(*p)
+          .map(|t| *t = Texel::empty().with_fg(colors::GRAY));
       }
       for p in &fov.visible {
-        view_mask.get_mut(*p).map(|t| *t = Texel::new('\0'));
+        view_mask.get_mut(*p).map(|t| *t = Texel::empty());
       }
     }
 
@@ -285,7 +287,7 @@ fn main() {
     let widgets = widget_bar.draw(80);
     let mut texels = RectVec::new(
       Rect::with_dims(80, 1).centered_on(scene.camera + Point::new(0, 12)),
-      Texel::new('\0'),
+      Texel::empty(),
     );
     texels.data_mut().copy_from_slice(widgets);
 
