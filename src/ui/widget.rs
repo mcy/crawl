@@ -264,10 +264,21 @@ pub enum Shape {
   /// HP[|||||20/200]
   /// ```
   Bar {
-    /// An optional label before the bar.
-    label: Option<String>,
-    /// The color to fill the "active" portion of the bar with.
-    fill_color: Color,
+    /// A label.
+    label: String,
+    /// The color to use for the label.
+    label_color: Color,
+
+    /// The "brackets" to use for the bar, such as `('[', ']')`.
+    brackets: (Texel, Texel),
+    /// The "active" character for the bar.
+    active: Texel,
+    /// The "inactive" character for the bar.
+    inactive: Texel,
+
+    /// Whether to render digits with the exact bar values.
+    include_digits: bool,
+
     /// The fraction depicted on the bar.
     value_range: (i32, i32),
     /// The minium and maximum "prefered" sizes for the bar; the bar
@@ -280,16 +291,21 @@ pub enum Shape {
   /// x: 12
   /// ```
   Scalar {
-    /// An optional label before the value.
-    label: Option<String>,
-    /// The color to use for the value.
-    color: Color,
+    /// A label.
+    label: String,
+    /// The color to use for the label.
+    label_color: Color,
+
     /// The value itself.
     value: i32,
+    /// The color to use for the value.
+    value_color: Color,
   },
 
   /// Fills as much space as possible with the given texel.
-  Fill(Texel),
+  ///
+  /// It is possible to specify a limit for the size of the fill.
+  Fill(Texel, Option<usize>),
 
   /// Renders nothing; useful for hiding a widget based on the game state.
   Hidden,
@@ -303,130 +319,106 @@ impl Shape {
         label,
         value_range: (cur, max),
         width_range,
+        include_digits,
         ..
       } => {
-        let label_len = label.as_ref().map(String::len).unwrap_or(0);
-        let cur_len = estimate_num_chars(*cur);
-        let max_len = estimate_num_chars(*max);
-
-        // The 3 is for the brackets and the slash.
-        let minimum = label_len + cur_len + max_len + 3;
+        let minimum = if *include_digits {
+          let cur_len = estimate_num_chars(*cur);
+          let max_len = estimate_num_chars(*max);
+          // The 3 is for the brackets and the slash.
+          label.len() + cur_len + max_len + 3
+        } else {
+          // The 2 is for the brackets.
+          label.len() + 2
+        };
 
         let min = minimum.max(width_range.0);
         let max = minimum.max(width_range.1);
         Hint::Flex(min, Some(max))
       }
       Self::Scalar { label, value, .. } => {
-        let label_len = label.as_ref().map(String::len).unwrap_or(0);
         let int_len = estimate_num_chars(*value);
-        Hint::Fixed(label_len + int_len)
+        Hint::Fixed(label.len() + int_len)
       }
-      Self::Fill(_) => Hint::Flex(0, None),
+      Self::Fill(_, limit) => Hint::Flex(0, *limit),
       Self::Hidden => Hint::Hidden,
     }
   }
 
   /// Draws this shape onto `buf`.
-  fn draw(&self, mut buf: &mut [Texel]) {
+  fn draw(&self, mut buf: &mut [Texel]) -> Option<()> {
     match self {
       Self::Bar {
         label,
-        fill_color: color,
+        label_color,
+        active,
+        inactive,
         value_range: (cur, max),
+        brackets: (lbrack, rbrack),
+        include_digits,
         ..
       } => {
-        let label_len = label.as_ref().map(String::len).unwrap_or(0);
-        let cur_len = estimate_num_chars(*cur);
-        let max_len = estimate_num_chars(*max);
-
         // 1 below is the slash; 2 is the brackets.
-        let bar_nums = cur_len + max_len + 1;
-        let minimum = label_len + 2 + bar_nums;
+        let bar_nums = if *include_digits {
+          let cur_len = estimate_num_chars(*cur);
+          let max_len = estimate_num_chars(*max);
+          cur_len + max_len + 1
+        } else {
+          0
+        };
+
+        let minimum = label.len() + 2 + bar_nums;
         let extra = buf.len().saturating_sub(minimum);
         let mut filled = (bar_nums + extra) * *cur as usize / *max as usize;
-
-        for c in label.as_ref().map(String::as_str).unwrap_or("").chars() {
-          if !push_texel(Texel::new(c), &mut buf) {
-            return;
+        let mut fill_tx = || {
+          if filled > 0 {
+            filled -= 1;
+            *active
+          } else {
+            *inactive
           }
+        };
+
+        for c in label.chars() {
+          push_texel(Texel::new(c).with_fg(*label_color), &mut buf)?;
         }
 
-        if !push_texel(Texel::new('['), &mut buf) {
-          return;
-        }
+        push_texel(*lbrack, &mut buf)?;
         for _ in 0..extra {
-          let color = if filled > 0 {
-            filled -= 1;
-            *color
-          } else {
-            Color::Reset
-          };
-          if !push_texel(Texel::new('|').with_fg(color), &mut buf) {
-            return;
+          push_texel(fill_tx(), &mut buf)?;
+        }
+        if *include_digits {
+          for c in format!("{}", cur).chars() {
+            push_texel(fill_tx().with_glyph(c), &mut buf)?;
+          }
+          push_texel(fill_tx().with_glyph('/'), &mut buf)?;
+          for c in format!("{}", max).chars() {
+            push_texel(fill_tx().with_glyph(c), &mut buf)?;
           }
         }
-        for c in format!("{}", cur).chars() {
-          let color = if filled > 0 {
-            filled -= 1;
-            *color
-          } else {
-            Color::Reset
-          };
-          if !push_texel(Texel::new(c).with_fg(color), &mut buf) {
-            return;
-          }
-        }
-        {
-          let color = if filled > 0 {
-            filled -= 1;
-            *color
-          } else {
-            Color::Reset
-          };
-          if !push_texel(Texel::new('/').with_fg(color), &mut buf) {
-            return;
-          }
-        }
-        for c in format!("{}", max).chars() {
-          let color = if filled > 0 {
-            filled -= 1;
-            *color
-          } else {
-            Color::Reset
-          };
-          if !push_texel(Texel::new(c).with_fg(color), &mut buf) {
-            return;
-          }
-        }
-        if !push_texel(Texel::new(']'), &mut buf) {
-          return;
-        }
+        push_texel(*rbrack, &mut buf)?;
       }
       Self::Scalar {
         label,
-        color,
+        label_color,
         value,
+        value_color,
       } => {
-        for c in label.as_ref().map(String::as_str).unwrap_or("").chars() {
-          if !push_texel(Texel::new(c), &mut buf) {
-            return;
-          }
+        for c in label.chars() {
+          push_texel(Texel::new(c).with_fg(*label_color), &mut buf)?;
         }
-
-        let num = format!("{}", value);
-        for c in num.chars() {
-          if !push_texel(Texel::new(c).with_fg(*color), &mut buf) {
-            return;
-          }
+        for c in format!("{}", value).chars() {
+          push_texel(Texel::new(c).with_fg(*value_color), &mut buf)?;
         }
       }
-      Self::Fill(t) => {
+      Self::Fill(t, _) => {
         for tx in buf {
           *tx = *t;
         }
       }
       Self::Hidden => {}
     }
+    Some(())
   }
 }
 
@@ -445,14 +437,14 @@ fn estimate_num_chars(mut num: i32) -> usize {
 
 /// Pushes `tx` onto `buf`, returning the remaining part of `buf` and whether
 /// the push succeeded.
-fn push_texel(tx: Texel, buf: &mut &mut [Texel]) -> bool {
+fn push_texel(tx: Texel, buf: &mut &mut [Texel]) -> Option<()> {
   if buf.is_empty() {
-    return false;
+    return None;
   }
   buf[0] = tx;
   let mut tmp = &mut [][..];
   std::mem::swap(buf, &mut tmp);
   tmp = &mut tmp[1..];
   std::mem::swap(buf, &mut tmp);
-  return true;
+  return Some(());
 }

@@ -68,7 +68,8 @@ fn main() {
 
   enum WType {
     Health,
-    Spacer,
+    Magic,
+    Spacer(Option<usize>),
     X,
     Y,
     Gold,
@@ -80,26 +81,53 @@ fn main() {
     fn update(&self, state: &Self::State, shape: &mut Shape) {
       *shape = match self {
         Self::Health => Shape::Bar {
-          label: Some("HP".into()),
-          fill_color: colors::RED.into(),
+          label: "HP".into(),
+          label_color: colors::RED.into(),
+
           value_range: (state.health as i32, 200),
           width_range: (10, 20),
+
+          brackets: (
+            Texel::new('[').with_fg(colors::WHITE),
+            Texel::new(']').with_fg(colors::WHITE),
+          ),
+          active: Texel::new('|').with_fg(colors::RED),
+          inactive: Texel::new('|').with_fg(colors::DARKGRAY),
+          include_digits: true,
         },
-        Self::Spacer => Shape::Fill(Texel::new('\0')),
+        Self::Magic => Shape::Bar {
+          label: "MP".into(),
+          label_color: colors::ROYALBLUE.into(),
+
+          value_range: (40, 50),
+          width_range: (10, 15),
+
+          brackets: (
+            Texel::new('[').with_fg(colors::WHITE),
+            Texel::new(']').with_fg(colors::WHITE),
+          ),
+          active: Texel::new('*').with_fg(colors::ROYALBLUE),
+          inactive: Texel::new(' ').with_fg(colors::DARKGRAY),
+          include_digits: false,
+        },
+        Self::Spacer(limit) => Shape::Fill(Texel::empty(), *limit),
         Self::X => Shape::Scalar {
-          label: Some("x: ".into()),
-          color: colors::CYAN.into(),
+          label: "x: ".into(),
+          label_color: Color::Reset,
           value: state.pos.x() as i32,
+          value_color: colors::CYAN.into(),
         },
         Self::Y => Shape::Scalar {
-          label: Some(" y: ".into()),
-          color: colors::CYAN.into(),
+          label: "y: ".into(),
+          label_color: Color::Reset,
           value: state.pos.y() as i32,
+          value_color: colors::CYAN.into(),
         },
         Self::Gold => Shape::Scalar {
-          label: Some("$".into()),
-          color: colors::GOLD.into(),
+          label: "$".into(),
+          label_color: Color::Reset,
           value: state.gold as i32,
+          value_color: colors::GOLD.into(),
         },
       }
     }
@@ -110,12 +138,15 @@ fn main() {
     pos: Point::zero(),
     gold: 42,
   });
-  bar.push(WType::Health, 0);
-  bar.push(WType::Spacer, 1);
-  bar.push(WType::X, 2);
-  bar.push(WType::Y, 3);
-  bar.push(WType::Spacer, 4);
-  bar.push(WType::Gold, 5);
+  bar.push(WType::Health, 10);
+  bar.push(WType::Spacer(Some(1)), 11);
+  bar.push(WType::Magic, 12);
+  bar.push(WType::Spacer(None), 20);
+  bar.push(WType::X, 30);
+  bar.push(WType::Spacer(Some(1)), 31);
+  bar.push(WType::Y, 32);
+  bar.push(WType::Spacer(None), 40);
+  bar.push(WType::Gold, 50);
 
   let mut timer = SystemTimer::new();
   timer.register("process_visibility");
@@ -189,6 +220,7 @@ fn main() {
         }
       }
       widget_bar.state_mut().pos = pos.0;
+      widget_bar.mark_dirty();
     }
   }
 

@@ -94,6 +94,13 @@ impl Texel {
     self.glyph
   }
 
+  /// Returns a copy of this texel with the given glyph.
+  #[inline]
+  pub fn with_glyph(mut self, glyph: impl Into<Option<char>>) -> Self {
+    self.glyph = glyph.into();
+    self
+  }
+
   /// Returns this texel's foreground color.
   #[inline]
   pub fn fg(self) -> Color {
