@@ -12,6 +12,12 @@ use std::time::Duration;
 use crate::render::texel;
 use crate::render::texel::Texel;
 
+/// Returns the current dimensions of the terminal window.
+pub fn dims() -> (usize, usize) {
+  let (cols, rows) = crossterm::terminal::size().unwrap();
+  (rows as _, cols as _)
+}
+
 /// A low-level curses context.
 pub struct Curses<W: io::Write = io::Stdout> {
   w: W,
@@ -80,12 +86,6 @@ impl<W: io::Write> Curses<W> {
       crossterm::style::Print(call.texel.glyph().unwrap_or(' ')),
     )
     .unwrap();
-  }
-
-  /// Returns the current dimensions of the screen.
-  pub fn dims(&mut self) -> (usize, usize) {
-    let (cols, rows) = crossterm::terminal::size().unwrap();
-    (rows as _, cols as _)
   }
 
   /// Returns an iterator over currently-buffered keyboard inputs.

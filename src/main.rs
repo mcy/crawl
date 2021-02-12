@@ -99,7 +99,7 @@ fn main() {
           label: "MP".into(),
           label_color: colors::ROYALBLUE.into(),
 
-          value_range: (40, 50),
+          value_range: (50, 50),
           width_range: (10, 15),
 
           brackets: (
@@ -265,41 +265,26 @@ fn main() {
     #[resource] renderer: &mut Renderer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
-    let mut window = window.lock().unwrap();
-    let mut scene = Scene {
-      elements: Vec::new(),
-      debug: Vec::new(),
-      camera: Point::zero(),
-      void: Texel::new('#'),
-    };
-
-    for pos in <&Position>::query()
+    let camera = <&Position>::query()
       .filter(query::component::<HasCamera>())
       .iter(world)
-    {
-      scene.camera = pos.0;
-      break;
-    }
+      .map(|Position(p)| *p)
+      .next()
+      .unwrap_or(Point::zero());
 
-    let (rows, cols) = window.dims();
-    let viewport =
-      Rect::with_dims(cols as i64, rows as i64).centered_on(scene.camera);
-
-    for (_, chunk) in floor.chunks_in(viewport) {
-      scene.elements.push(Element {
-        priority: 0,
-        data: chunk.image(),
-      });
+    let mut scene = Scene::new(camera, true);
+    for (_, chunk) in floor.chunks_in(scene.viewport()) {
+      scene.push(0, chunk.image());
     }
 
     for (pos, Sprite(tx)) in <(&Position, &Sprite)>::query().iter(world) {
-      scene.elements.push(Element {
-        priority: 1,
-        data: RectVec::new(Rect::with_dims(1, 1).centered_on(pos.0), *tx),
-      });
+      scene.push(
+        1,
+        RectVec::new(Rect::with_dims(1, 1).centered_on(pos.0), *tx),
+      );
     }
 
-    let mut view_mask = RectVec::new(viewport, Texel::new(' '));
+    let mut view_mask = RectVec::new(scene.viewport(), Texel::new(' '));
     for fov in <&Fov>::query().iter(world) {
       for p in &fov.seen {
         view_mask
@@ -311,36 +296,29 @@ fn main() {
       }
     }
 
-    scene.elements.push(Element {
-      priority: 2,
-      data: view_mask,
-    });
+    scene.push(2, view_mask);
 
     let widgets = widget_bar.draw(80);
     let mut texels = RectVec::new(
-      Rect::with_dims(80, 1).centered_on(scene.camera + Point::new(0, 12)),
+      Rect::with_dims(80, 1).centered_on(scene.camera() + Point::new(0, 12)),
       Texel::empty(),
     );
     texels.data_mut().copy_from_slice(widgets);
 
-    scene.elements.push(Element {
-      priority: 3,
-      data: texels,
-    });
+    scene.push(3, texels);
 
     let fps = frame_timer.measure_fps(Duration::from_millis(500));
     let count = frame_timer.frame_count();
-    scene
-      .debug
-      .push(format!("fps: {:.2}, count: {}", fps, count));
+    scene.debug(format!("fps: {:.2}, count: {}", fps, count));
 
-    scene.debug.push(format!(
+    scene.debug(format!(
       "vis: {:.2}us",
       timer
         .measure("process_visibility", Duration::from_millis(500))
         .as_micros()
     ));
 
+    let mut window = window.lock().unwrap();
     renderer.bake(scene, &mut *window);
     frame_timer.end_frame(60);
   }

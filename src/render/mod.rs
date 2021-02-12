@@ -29,11 +29,8 @@ impl Renderer {
 
   /// Bakes a scene, rendering it onto the given `window`.
   pub fn bake(&mut self, mut scene: Scene, window: &mut curses::Curses) {
-    let (rows, cols) = window.dims();
-    let viewport =
-      Rect::with_dims(cols as i64, rows as i64).centered_on(scene.camera);
-
-    self.scratch.resize(viewport, scene.void);
+    let viewport = scene.viewport();
+    self.scratch.resize(viewport, Texel::new('?'));
 
     scene.elements.sort_by_key(|e| e.priority);
     for Element { data, .. } in scene.elements {
@@ -99,25 +96,59 @@ impl Renderer {
 /// itself is done with the [`Renderer`].
 ///
 /// See [`Renderer::bake()`].
+#[derive(Clone, Debug)]
 pub struct Scene {
-  /// A list of scene elements to render.
-  pub elements: Vec<Element>,
-
-  /// A list of debug statements to print on top of the rendered scene.
-  pub debug: Vec<String>,
-
-  ///
-  pub camera: Point,
-  ///
-  pub void: Texel,
+  elements: Vec<Element>,
+  debug: Vec<String>,
+  camera: Point,
+  viewport: Rect,
+  debug_mode: bool,
 }
 
-/// A scene element.
-///
-/// Scene elements are essentially just blocks of raw texels.
-pub struct Element {
-  /// The z-priority for this element.
-  pub priority: i32,
+#[derive(Clone, Debug)]
+struct Element {
+  priority: i32,
+  data: RectVec<Texel>,
+}
+
+impl Scene {
+  /// Creates a new `Scene` centered on `camera`.
   ///
-  pub data: RectVec<Texel>,
+  /// If `debug_mode` is false, debug strings will not be rendered in this
+  /// scene.
+  pub fn new(camera: Point, debug_mode: bool) -> Self {
+    let (rows, cols) = curses::dims();
+    let viewport =
+      Rect::with_dims(cols as i64, rows as i64).centered_on(camera);
+    Self {
+      elements: Vec::new(),
+      debug: Vec::new(),
+      camera,
+      viewport,
+      debug_mode,
+    }
+  }
+
+  /// Returns the location of this `Scene`'s camera.
+  pub fn camera(&self) -> Point {
+    self.camera
+  }
+
+  /// Returns this `Scene`'s viewport, in game coordinates.
+  pub fn viewport(&self) -> Rect {
+    self.viewport
+  }
+
+  /// Adds a new scene element with the given priority to this scene.
+  pub fn push(&mut self, priority: i32, data: RectVec<Texel>) {
+    self.elements.push(Element { priority, data });
+  }
+
+  /// Adds debug information to this scene, which is rendered on top of all
+  /// elements.
+  pub fn debug(&mut self, data: String) {
+    if self.debug_mode {
+      self.debug.push(data)
+    }
+  }
 }
