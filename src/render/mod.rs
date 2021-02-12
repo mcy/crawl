@@ -36,10 +36,19 @@ impl Renderer {
     self.scratch.resize(viewport, scene.void);
 
     scene.elements.sort_by_key(|e| e.priority);
-    for element in scene.elements {
-      match element.kind {
-        ElementKind::Image(data) => self.draw_image(&data),
-        ElementKind::Shader(f) => self.apply_shader(&f),
+    for Element { data, .. } in scene.elements {
+      let intersection = match data.dims().intersect(self.scratch.dims()) {
+        Some(x) => x,
+        None => continue,
+      };
+
+      for p in intersection.points() {
+        let tx = *data.get(p).unwrap();
+        if tx.glyph() == '\0' {
+          continue;
+        }
+
+        *self.scratch.get_mut(p).unwrap() = tx;
       }
     }
 
@@ -59,37 +68,6 @@ impl Renderer {
     }
 
     self.draw_scene(window);
-  }
-
-  /// Draws `data` onto the scratch buffer, taking into mind `data`'s absolute
-  /// dimensions.
-  fn draw_image(&mut self, data: &RectVec<Texel>) {
-    let intersection = match data.dims().intersect(self.scratch.dims()) {
-      Some(x) => x,
-      None => return,
-    };
-
-    for p in intersection.points() {
-      let tx = *data.get(p).unwrap();
-      if tx.glyph() == '\0' {
-        continue;
-      }
-
-      *self.scratch.get_mut(p).unwrap() = tx;
-    }
-  }
-
-  /// Applies `shader` to the scratch buffer.
-  ///
-  /// TODO(mcyoung): Replace this entire functionality with blitting masks
-  /// instead.
-  fn apply_shader(
-    &mut self,
-    shader: &(dyn Fn(Point<i64>, Texel) -> Texel + '_),
-  ) {
-    for (p, tx) in self.scratch.points_mut() {
-      *tx = shader(p, *tx);
-    }
   }
 
   /// Draws the baked scene currently in `self.scratch`.
@@ -124,9 +102,9 @@ impl Renderer {
 /// itself is done with the [`Renderer`].
 ///
 /// See [`Renderer::bake()`].
-pub struct Scene<'a> {
+pub struct Scene {
   /// A list of scene elements to render.
-  pub elements: Vec<Element<'a>>,
+  pub elements: Vec<Element>,
 
   /// A list of debug statements to print on top of the rendered scene.
   pub debug: Vec<String>,
@@ -139,22 +117,10 @@ pub struct Scene<'a> {
 
 /// A scene element.
 ///
-/// Scene elements can just be blocks of raw texels, or they be more complex
-/// mappings of existing texels.
-pub struct Element<'a> {
+/// Scene elements are essentially just blocks of raw texels.
+pub struct Element {
   /// The z-priority for this element.
   pub priority: i32,
-  /// The kind of element, e.g., rendering strategy, for this element.
-  pub kind: ElementKind<'a>,
-}
-
-/// A kind of [`Element`].
-pub enum ElementKind<'a> {
-  /// A plain buffer of texels to draw.
-  Image(RectVec<Texel>),
-
-  /// A dynamic texel shader.
   ///
-  /// Very slow, probably going away.
-  Shader(Box<dyn Fn(Point<i64>, Texel) -> Texel + 'a>),
+  pub data: RectVec<Texel>,
 }

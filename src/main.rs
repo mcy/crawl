@@ -256,42 +256,30 @@ fn main() {
     for (_, chunk) in floor.chunks_in(viewport) {
       scene.elements.push(Element {
         priority: 0,
-        kind: ElementKind::Image(chunk.image()),
+        data: chunk.image(),
       });
     }
 
     for (pos, Sprite(tx)) in <(&Position, &Sprite)>::query().iter(world) {
       scene.elements.push(Element {
         priority: 1,
-        kind: ElementKind::Image(RectVec::new(
-          Rect::with_dims(1, 1).centered_on(pos.0),
-          *tx,
-        )),
+        data: RectVec::new(Rect::with_dims(1, 1).centered_on(pos.0), *tx),
       });
     }
 
-    let mut visible_points = HashSet::new();
-    let mut seen_points = HashSet::new();
+    let mut view_mask = RectVec::new(viewport, Texel::new(' '));
     for fov in <&Fov>::query().iter(world) {
-      for p in &fov.visible {
-        visible_points.insert(p);
-      }
       for p in &fov.seen {
-        seen_points.insert(p);
+        view_mask.get_mut(*p).map(|t| *t = Texel::new('\0'));
+      }
+      for p in &fov.visible {
+        view_mask.get_mut(*p).map(|t| *t = Texel::new('\0'));
       }
     }
 
     scene.elements.push(Element {
       priority: 2,
-      kind: ElementKind::Shader(Box::new(move |p, tx| {
-        if visible_points.contains(&p) {
-          tx
-        } else if seen_points.contains(&p) {
-          Texel::colored(tx.glyph(), Some(palette::named::GRAY), None)
-        } else {
-          Texel::new(' ')
-        }
-      })),
+      data: view_mask,
     });
 
     let widgets = widget_bar.draw(80);
@@ -303,7 +291,7 @@ fn main() {
 
     scene.elements.push(Element {
       priority: 3,
-      kind: ElementKind::Image(texels),
+      data: texels,
     });
 
     let fps = frame_timer.measure_fps(Duration::from_millis(500));
@@ -314,7 +302,9 @@ fn main() {
 
     scene.debug.push(format!(
       "vis: {:.2}us",
-      timer.measure("process_visibility", Duration::from_millis(500)).as_micros()
+      timer
+        .measure("process_visibility", Duration::from_millis(500))
+        .as_micros()
     ));
 
     renderer.bake(scene, &mut *window);
