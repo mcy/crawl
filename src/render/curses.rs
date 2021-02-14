@@ -7,6 +7,7 @@
 //! emulates its behavior at a high level in terms of another library.
 
 use std::io;
+use std::io::Write as _;
 
 use crate::render::texel;
 use crate::render::texel::Texel;
@@ -18,32 +19,17 @@ pub fn dims() -> (usize, usize) {
 }
 
 /// A low-level curses context.
-pub struct Curses<W: io::Write = io::Stdout> {
-  w: W,
+pub struct Curses {
+  w: io::Stdout,
 }
 
 impl Curses {
   /// Initializes the `curses` environment.
   pub fn init() -> Curses {
-    Curses::with(io::stdout())
-  }
-}
+    let mut c = Curses { w: io::stdout() };
 
-/// Arguments for a draw call.
-///
-/// See [`Curses::draw()`].
-#[allow(missing_docs)]
-pub struct DrawCall {
-  pub row: usize,
-  pub col: usize,
-  pub texel: Texel,
-}
-
-impl<W: io::Write> Curses<W> {
-  /// Initializes the `curses` environment for `w`.
-  pub fn with(mut w: W) -> Curses<W> {
     crossterm::execute!(
-      w,
+      c.w,
       crossterm::terminal::EnterAlternateScreen,
       crossterm::cursor::Hide,
       crossterm::terminal::DisableLineWrap,
@@ -51,40 +37,16 @@ impl<W: io::Write> Curses<W> {
     .unwrap();
     crossterm::terminal::enable_raw_mode().unwrap();
 
-    Curses { w }
+    c
   }
 
-  /// Draws the character `c` at the given location on the screen.
-  pub fn draw(&mut self, call: DrawCall) {
-    use crossterm::style::Color;
-    use crossterm::style::Colors;
-    let fg = match call.texel.fg() {
-      texel::Color::Rgb(rgb) => Color::Rgb {
-        r: rgb.red,
-        g: rgb.green,
-        b: rgb.blue,
-      },
-      _ => Color::Reset,
-    };
-    let bg = match call.texel.bg() {
-      texel::Color::Rgb(rgb) => Color::Rgb {
-        r: rgb.red,
-        g: rgb.green,
-        b: rgb.blue,
-      },
-      _ => Color::Reset,
-    };
-
-    crossterm::queue!(
-      self.w,
-      crossterm::cursor::MoveTo(call.col as _, call.row as _),
-      crossterm::style::SetColors(Colors {
-        foreground: Some(fg),
-        background: Some(bg),
-      }),
-      crossterm::style::Print(call.texel.glyph().unwrap_or(' ')),
-    )
-    .unwrap();
+  /// Starts a new drawing session, taking a lock on `stdout`.
+  ///
+  /// The returned value can be used to draw individual cells of the terminal,
+  /// though they will not be commited until the returned RAII object is
+  /// dropped.
+  pub fn draw_session(&self) -> Session<'_> {
+    Session(self.w.lock())
   }
 
   /// Clean up whatever mess the terminal made.
@@ -107,8 +69,48 @@ impl<W: io::Write> Curses<W> {
   }
 }
 
-impl<W: io::Write> Drop for Curses<W> {
+impl Drop for Curses {
   fn drop(&mut self) {
     self.cleanup();
+  }
+}
+
+/// RAII wrapper for a `stdout` lock, which can be used to perform a long
+/// sequence of draw calls without having to hit the `stdout` lock on each one.
+pub struct Session<'a>(io::StdoutLock<'a>);
+
+impl Session<'_> {
+  /// Draws a texel at the given row-column on the screen.
+  pub fn draw(&mut self, rc: (usize, usize), tx: Texel) {
+    use crossterm::style::Color;
+    use crossterm::style::Colors;
+    let fg = match tx.fg() {
+      texel::Color::Rgb(rgb) => Color::Rgb {
+        r: rgb.red,
+        g: rgb.green,
+        b: rgb.blue,
+      },
+      _ => Color::Reset,
+    };
+    let bg = match tx.bg() {
+      texel::Color::Rgb(rgb) => Color::Rgb {
+        r: rgb.red,
+        g: rgb.green,
+        b: rgb.blue,
+      },
+      _ => Color::Reset,
+    };
+
+    let (r, c) = rc;
+    crossterm::queue!(
+      self.0,
+      crossterm::cursor::MoveTo(c as _, r as _),
+      crossterm::style::SetColors(Colors {
+        foreground: Some(fg),
+        background: Some(bg),
+      }),
+      crossterm::style::Print(tx.glyph().unwrap_or(' ')),
+    )
+    .unwrap();
   }
 }

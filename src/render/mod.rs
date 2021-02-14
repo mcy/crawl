@@ -28,7 +28,7 @@ impl Renderer {
   }
 
   /// Bakes a scene, rendering it onto the given `window`.
-  pub fn bake(&mut self, mut scene: Scene, window: &mut curses::Curses) {
+  pub fn bake(&mut self, mut scene: Scene, window: &curses::Curses) {
     let viewport = scene.viewport();
     self.scratch.resize(viewport, Texel::new('?'));
 
@@ -65,10 +65,11 @@ impl Renderer {
   }
 
   /// Draws the baked scene currently in `self.scratch`.
-  fn draw_scene(&mut self, window: &mut curses::Curses) {
+  fn draw_scene(&mut self, window: &curses::Curses) {
     let origin = self.scratch.dims().upper_left();
     let same_area = self.scratch.dims().area() == self.baked.dims().area();
 
+    let mut session = window.draw_session();
     for (i, (p, new_tx)) in self.scratch.points().enumerate() {
       if same_area && self.baked.data()[i] == *new_tx {
         // TODO(mcyoung): This should be used to intelligently cache which draw
@@ -79,11 +80,7 @@ impl Renderer {
       }
 
       let rel = p - origin;
-      window.draw(curses::DrawCall {
-        row: rel.y() as usize,
-        col: rel.x() as usize,
-        texel: *new_tx,
-      })
+      session.draw((rel.y() as usize, rel.x() as usize), *new_tx);
     }
 
     mem::swap(&mut self.scratch, &mut self.baked);

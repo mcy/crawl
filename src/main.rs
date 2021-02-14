@@ -15,8 +15,6 @@ pub mod timing;
 pub mod ui;
 
 fn main() {
-  use std::sync::Mutex;
-
   use crate::actor::*;
   use crate::geo::*;
   use crate::map::*;
@@ -144,7 +142,7 @@ fn main() {
   bar.push(WType::Gold, 50);
 
   let mut resources = Resources::default();
-  resources.insert(Mutex::new(render::curses::Curses::init()));
+  resources.insert(curses::Curses::init());
   resources.insert(FrameTimer::new());
   resources.insert(SystemTimer::new());
   resources.insert(floor);
@@ -155,10 +153,10 @@ fn main() {
   #[legion::system]
   fn quit(
     #[resource] input: &mut input::UserInput,
-    #[resource] window: &Mutex<render::curses::Curses>,
+    #[resource] window: &mut render::curses::Curses,
   ) {
     if input.has_key(input::KeyCode::Char('q')) {
-      window.lock().unwrap().die(0);
+      window.die(0);
     }
   }
 
@@ -233,7 +231,7 @@ fn main() {
     #[resource] frame_timer: &mut FrameTimer,
     #[resource] timer: &SystemTimer,
     #[resource] floor: &Floor,
-    #[resource] window: &Mutex<render::curses::Curses>,
+    #[resource] window: &render::curses::Curses,
     #[resource] renderer: &mut Renderer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
@@ -295,8 +293,7 @@ fn main() {
     t.finish();
     let _t = timer.start("renderer.bake()");
 
-    let mut window = window.lock().unwrap();
-    renderer.bake(scene, &mut *window);
+    renderer.bake(scene, window);
     frame_timer.end_frame(60);
   }
 
