@@ -2,23 +2,18 @@
 
 #![deny(unused)]
 #![deny(warnings)]
-#![deny(missing_docs)]
 
 use std::collections::HashSet;
 use std::time::Duration;
 
-use crossterm::event::KeyCode;
-use crossterm::event::KeyEvent;
-use crossterm::event::KeyModifiers;
-
 pub mod actor;
 pub mod geo;
+pub mod input;
 pub mod map;
 pub mod render;
 pub mod timing;
 pub mod ui;
 
-#[allow(missing_docs)]
 fn main() {
   use std::sync::Mutex;
 
@@ -151,39 +146,22 @@ fn main() {
   let mut timer = SystemTimer::new();
   timer.register("process_visibility");
 
-  struct Inputs {
-    keys: HashSet<KeyEvent>,
-  }
-
   let mut resources = Resources::default();
   resources.insert(Mutex::new(render::curses::Curses::init()));
   resources.insert(FrameTimer::new());
   resources.insert(timer);
   resources.insert(floor);
-  resources.insert(Inputs {
-    keys: HashSet::new(),
-  });
+  resources.insert(input::UserInput::new());
   resources.insert(Renderer::new());
   resources.insert(bar);
 
   #[legion::system]
-  fn consume_inputs(
-    #[resource] input: &mut Inputs,
+  fn quit(
+    #[resource] input: &mut input::UserInput,
     #[resource] window: &Mutex<render::curses::Curses>,
-    #[resource] timer: &mut SystemTimer,
   ) {
-    let _t = timer.start("consume_inputs");
-    let mut window = window.lock().unwrap();
-    input.keys.clear();
-    for k in window.keys() {
-      input.keys.insert(k);
-    }
-
-    if input
-      .keys
-      .contains(&KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()))
-    {
-      window.die(0);
+    if input.has_key(input::KeyCode::Char('q')) {
+      window.lock().unwrap().die(0);
     }
   }
 
@@ -193,24 +171,21 @@ fn main() {
   fn process_input(
     world: &mut SubWorld,
     #[resource] floor: &Floor,
-    #[resource] input: &mut Inputs,
+    #[resource] input: &input::UserInput,
     #[resource] timer: &mut SystemTimer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
     let _t = timer.start("process_input");
     let dirs = &[
-      (KeyCode::Char('a'), Point::new(-1, 0)),
-      (KeyCode::Char('d'), Point::new(1, 0)),
-      (KeyCode::Char('w'), Point::new(0, -1)),
-      (KeyCode::Char('s'), Point::new(0, 1)),
+      (input::KeyCode::Char('a'), Point::new(-1, 0)),
+      (input::KeyCode::Char('d'), Point::new(1, 0)),
+      (input::KeyCode::Char('w'), Point::new(0, -1)),
+      (input::KeyCode::Char('s'), Point::new(0, 1)),
     ];
 
     for (pos, _) in <(&mut Position, &Player)>::query().iter_mut(world) {
       for &(k, dir) in dirs {
-        if input
-          .keys
-          .contains(&KeyEvent::new(k, KeyModifiers::empty()))
-        {
+        if input.has_key(k) {
           let new_pos = pos.0 + dir;
           match floor.chunk(new_pos).unwrap().tile(new_pos) {
             Tile::Wall | Tile::Void => continue,
@@ -324,7 +299,8 @@ fn main() {
   }
 
   let mut schedule = Schedule::builder()
-    .add_system(consume_inputs_system())
+    .add_system(input::start_frame_system())
+    .add_system(quit_system())
     .add_system(process_input_system())
     .flush()
     .add_system(process_visibility_system())

@@ -7,7 +7,6 @@
 //! emulates its behavior at a high level in terms of another library.
 
 use std::io;
-use std::time::Duration;
 
 use crate::render::texel;
 use crate::render::texel::Texel;
@@ -86,23 +85,6 @@ impl<W: io::Write> Curses<W> {
       crossterm::style::Print(call.texel.glyph().unwrap_or(' ')),
     )
     .unwrap();
-  }
-
-  /// Returns an iterator over currently-buffered keyboard inputs.
-  pub fn keys(
-    &mut self,
-  ) -> impl Iterator<Item = crossterm::event::KeyEvent> + '_ {
-    use crossterm::event::*;
-
-    std::iter::from_fn(move || {
-      while poll(Duration::default()).unwrap() {
-        match read().unwrap() {
-          Event::Key(e) => return Some(e),
-          _ => continue,
-        }
-      }
-      None
-    })
   }
 
   /// Clean up whatever mess the terminal made.
