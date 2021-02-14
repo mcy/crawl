@@ -244,39 +244,46 @@ fn main() {
       .unwrap_or(Point::zero());
 
     let mut scene = Scene::new(camera, true);
-    for (_, chunk) in floor.chunks_in(scene.viewport()) {
-      scene.push(0, chunk.image());
-    }
+    let viewport = scene.viewport();
 
+    let mut map_layer = scene.image_layer(0);
+    for (_, chunk) in floor.chunks_in(viewport) {
+      map_layer.push(chunk.image());
+    }
+    map_layer.finish();
+
+    let mut sprite_layer = scene.image_layer(1);
     for (pos, Sprite(tx)) in <(&Position, &Sprite)>::query().iter(world) {
-      scene.push(
-        1,
-        RectVec::new(Rect::with_dims(1, 1).centered_on(pos.0), *tx),
-      );
+      sprite_layer
+        .push(RectVec::new(Rect::with_dims(1, 1).centered_on(pos.0), *tx));
     }
+    sprite_layer.finish();
 
-    let mut view_mask = RectVec::new(scene.viewport(), Texel::new(' '));
+    let mut fov_layer = scene.image_layer(2);
+    let mut fov_mask = RectVec::new(viewport, Texel::new(' '));
     for fov in <&Fov>::query().iter(world) {
       for p in &fov.seen {
-        view_mask
+        fov_mask
           .get_mut(*p)
           .map(|t| *t = Texel::empty().with_fg(colors::GRAY));
       }
       for p in &fov.visible {
-        view_mask.get_mut(*p).map(|t| *t = Texel::empty());
+        fov_mask.get_mut(*p).map(|t| *t = Texel::empty());
       }
     }
+    fov_layer.push(fov_mask);
+    fov_layer.finish();
 
-    scene.push(2, view_mask);
-
+    let mut ui_layer = scene.image_layer(3);
     let widgets = widget_bar.draw(80);
-    let mut texels = RectVec::new(
-      Rect::with_dims(80, 1).centered_on(scene.camera() + Point::new(0, 12)),
+    let mut widget_data = RectVec::new(
+      Rect::with_dims(80, 1)
+        .centered_on(ui_layer.scene().camera() + Point::new(0, 12)),
       Texel::empty(),
     );
-    texels.data_mut().copy_from_slice(widgets);
-
-    scene.push(3, texels);
+    widget_data.data_mut().copy_from_slice(widgets);
+    ui_layer.push(widget_data);
+    ui_layer.finish();
 
     let fps = frame_timer.measure_fps(Duration::from_millis(500));
     let count = frame_timer.frame_count();

@@ -32,17 +32,24 @@ impl Renderer {
     let viewport = scene.viewport();
     self.scratch.resize(viewport, Texel::new('?'));
 
-    scene.elements.sort_by_key(|e| e.priority);
-    for Element { data, .. } in scene.elements {
-      let intersection = match data.dims().intersect(self.scratch.dims()) {
-        Some(x) => x,
-        None => continue,
-      };
+    scene.layers.sort_by_key(|(p, _)| *p);
+    for (_, layer) in scene.layers {
+      match layer {
+        Layer::Image(images) => {
+          for data in images {
+            let intersection = match data.dims().intersect(self.scratch.dims())
+            {
+              Some(x) => x,
+              None => continue,
+            };
 
-      for p in intersection.points() {
-        let new = data.get(p).unwrap();
-        let old = self.scratch.get_mut(p).unwrap();
-        *old = old.add_layer(*new);
+            for p in intersection.points() {
+              let new = data.get(p).unwrap();
+              let old = self.scratch.get_mut(p).unwrap();
+              *old = old.add_layer(*new);
+            }
+          }
+        }
       }
     }
 
@@ -95,7 +102,7 @@ impl Renderer {
 /// See [`Renderer::bake()`].
 #[derive(Clone, Debug)]
 pub struct Scene {
-  elements: Vec<Element>,
+  layers: Vec<(i32, Layer)>,
   debug: Vec<String>,
   camera: Point,
   viewport: Rect,
@@ -103,9 +110,8 @@ pub struct Scene {
 }
 
 #[derive(Clone, Debug)]
-struct Element {
-  priority: i32,
-  data: RectVec<Texel>,
+enum Layer {
+  Image(Vec<RectVec<Texel>>),
 }
 
 impl Scene {
@@ -118,7 +124,7 @@ impl Scene {
     let viewport =
       Rect::with_dims(cols as i64, rows as i64).centered_on(camera);
     Self {
-      elements: Vec::new(),
+      layers: Vec::new(),
       debug: Vec::new(),
       camera,
       viewport,
@@ -136,9 +142,15 @@ impl Scene {
     self.viewport
   }
 
-  /// Adds a new scene element with the given priority to this scene.
-  pub fn push(&mut self, priority: i32, data: RectVec<Texel>) {
-    self.elements.push(Element { priority, data });
+  /// Returns an RAII builder for adding a new image layer to this scene.
+  ///
+  /// The layer will have the given z-priority.
+  pub fn image_layer(&mut self, priority: i32) -> ImageLayer<'_> {
+    ImageLayer {
+      scene: self,
+      priority,
+      images: Vec::new(),
+    }
   }
 
   /// Adds debug information to this scene, which is rendered on top of all
@@ -147,5 +159,40 @@ impl Scene {
     if self.debug_mode {
       self.debug.push(data)
     }
+  }
+}
+
+/// A scene layer consisting of various images.
+///
+/// This type can be used to build an image layer in a [`Scene`]; once the layer
+/// is complete, call [`finish()`] or drop this value, and it will get added to
+/// the scene.
+pub struct ImageLayer<'sc> {
+  scene: &'sc mut Scene,
+  priority: i32,
+  images: Vec<RectVec<Texel>>,
+}
+
+impl ImageLayer<'_> {
+  /// Returns the [`Scene`] associated with this layer.
+  pub fn scene(&self) -> &Scene {
+    self.scene
+  }
+
+  /// Adds a new image to this layer.
+  pub fn push(&mut self, image: RectVec<Texel>) {
+    self.images.push(image)
+  }
+
+  /// Finishes building this layer, and adds it to the owning [`Scene`].
+  pub fn finish(self) {}
+}
+
+impl Drop for ImageLayer<'_> {
+  fn drop(&mut self) {
+    self
+      .scene
+      .layers
+      .push((self.priority, Layer::Image(mem::take(&mut self.images))))
   }
 }
