@@ -9,8 +9,8 @@
 use std::io;
 use std::io::Write as _;
 
-use crate::render::texel;
-use crate::render::texel::Texel;
+use crate::gfx::texel;
+use crate::gfx::texel::Texel;
 
 /// Returns the current dimensions of the terminal window.
 pub fn dims() -> (usize, usize) {

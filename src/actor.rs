@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use crate::geo::Point;
-use crate::render::texel::Texel;
+use crate::gfx::texel::Texel;
 
 /// A "player" actor.
 pub struct Player;

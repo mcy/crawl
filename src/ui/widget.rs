@@ -13,8 +13,8 @@
 
 use num::integer::div_ceil;
 
-use crate::render::texel::Color;
-use crate::render::texel::Texel;
+use crate::gfx::texel::Color;
+use crate::gfx::texel::Texel;
 
 /// A widget type.
 ///

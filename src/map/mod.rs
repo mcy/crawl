@@ -13,7 +13,7 @@ use rand::distributions::Uniform;
 use crate::geo::Point;
 use crate::geo::Rect;
 use crate::geo::RectVec;
-use crate::render::texel::Texel;
+use crate::gfx::texel::Texel;
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Tile {

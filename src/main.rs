@@ -8,9 +8,9 @@ use std::time::Duration;
 
 pub mod actor;
 pub mod geo;
+pub mod gfx;
 pub mod input;
 pub mod map;
-pub mod render;
 pub mod timing;
 pub mod ui;
 
@@ -18,8 +18,7 @@ fn main() {
   use crate::actor::*;
   use crate::geo::*;
   use crate::map::*;
-  use crate::render::texel::*;
-  use crate::render::*;
+  use crate::gfx::texel::*;
   use crate::timing::*;
   use crate::ui::widget::*;
 
@@ -142,18 +141,18 @@ fn main() {
   bar.push(WType::Gold, 50);
 
   let mut resources = Resources::default();
-  resources.insert(curses::Curses::init());
+  resources.insert(gfx::Curses::init());
   resources.insert(FrameTimer::new());
   resources.insert(SystemTimer::new());
   resources.insert(floor);
   resources.insert(input::UserInput::new());
-  resources.insert(Renderer::new());
+  resources.insert(gfx::Renderer::new());
   resources.insert(bar);
 
   #[legion::system]
   fn quit(
     #[resource] input: &mut input::UserInput,
-    #[resource] window: &mut render::curses::Curses,
+    #[resource] window: &mut gfx::Curses,
   ) {
     if input.has_key(input::KeyCode::Char('q')) {
       window.die(0);
@@ -231,8 +230,8 @@ fn main() {
     #[resource] frame_timer: &mut FrameTimer,
     #[resource] timer: &SystemTimer,
     #[resource] floor: &Floor,
-    #[resource] window: &render::curses::Curses,
-    #[resource] renderer: &mut Renderer,
+    #[resource] window: &gfx::Curses,
+    #[resource] renderer: &mut gfx::Renderer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
     let t = timer.start("render");
@@ -243,7 +242,7 @@ fn main() {
       .next()
       .unwrap_or(Point::zero());
 
-    let mut scene = Scene::new(camera, true);
+    let mut scene = gfx::Scene::new(camera, true);
     let viewport = scene.viewport();
 
     let mut map_layer = scene.image_layer(0);
