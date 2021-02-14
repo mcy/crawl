@@ -59,8 +59,8 @@ impl UserInput {
 #[legion::system]
 pub fn start_frame(
   #[resource] input: &mut UserInput,
-  #[resource] timer: &mut SystemTimer,
+  #[resource] timer: &SystemTimer,
 ) {
-  let _t = timer.start("UserInput::per_frame()");
+  let _t = timer.start("input::start_frame()");
   input.start_frame();
 }

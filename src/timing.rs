@@ -1,11 +1,11 @@
 //! Timing primitives.
 
-use std::collections::HashMap;
 use std::sync::Mutex;
-use std::sync::MutexGuard;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
+
+use chashmap::CHashMap;
 
 /// A timer for maintaining a stable FPS.
 pub struct FrameTimer {
@@ -75,20 +75,17 @@ impl FrameTimer {
 /// This timer can keep track of several different operations, each of which is
 /// tracked by a string "tag", such as `my_system.foo`.
 pub struct SystemTimer {
-  table: HashMap<&'static str, Mutex<TimerInner>>,
+  table: CHashMap<&'static str, TimerInner>,
+  keys: Mutex<Vec<&'static str>>,
 }
 
 impl SystemTimer {
   /// Creates a new `SystemTimer`.
   pub fn new() -> Self {
     Self {
-      table: HashMap::new(),
+      table: CHashMap::new(),
+      keys: Mutex::new(Vec::new()),
     }
-  }
-
-  /// Adds the tag `system` to the set of tags usable by this timer.
-  pub fn register(&mut self, system: &'static str) {
-    self.table.insert(system, Mutex::new(TimerInner::new()));
   }
 
   /// Starts a timing measurement for `system`.
@@ -96,15 +93,17 @@ impl SystemTimer {
   /// The measurement is completed when the returned guard value is dropped,
   /// which will then be added to the running total.
   #[must_use]
-  pub fn start(&mut self, system: &'static str) -> SystemTimerGuard<'_> {
-    match self.table.get(system) {
-      Some(lock) => {
-        let mut lock = lock.lock().unwrap();
-        lock.last_start = Instant::now();
-        SystemTimerGuard(Some(lock))
-      }
-      None => SystemTimerGuard(None),
-    }
+  pub fn start(&self, system: &'static str) -> SystemTimerGuard<'_> {
+    let keys = &self.keys;
+    self.table.upsert(
+      system,
+      move || {
+        keys.lock().unwrap().push(system);
+        TimerInner::new()
+      },
+      |v| v.last_start = Instant::now(),
+    );
+    SystemTimerGuard(self, system)
   }
 
   /// Returns the total time measured by this timer for `system`.
@@ -112,7 +111,7 @@ impl SystemTimer {
     self
       .table
       .get(system)
-      .map(|s| s.lock().unwrap().total_time)
+      .map(|s| s.total_time)
       .unwrap_or_default()
   }
 
@@ -123,25 +122,37 @@ impl SystemTimer {
   /// has elapsed since it was last called, and caches the measurement in
   /// between calls.
   pub fn measure(
-    &mut self,
+    &self,
     system: &'static str,
     measurement_interval: Duration,
   ) -> Duration {
-    let mut inner = match self.table.get(system) {
-      Some(lock) => lock.lock().unwrap(),
-      None => return Duration::default(),
-    };
-
-    if inner.last_measurement.elapsed() < measurement_interval {
-      return inner.timing;
+    match self.table.get_mut(system) {
+      Some(mut inner) => inner.measure(measurement_interval, Instant::now()),
+      None => Duration::default(),
     }
+  }
 
-    let timing = inner.raw_time / inner.measurements;
-    inner.timing = timing;
-    inner.raw_time = Duration::default();
-    inner.last_measurement = Instant::now();
-    inner.measurements = 0;
-    timing
+  /// Measure the average measure time since the last sampling interval for
+  /// every system tracked by `self`.
+  ///
+  /// This function performs an averating operation after `measurement_interval`
+  /// has elapsed since it was last called, and caches the measurement in
+  /// between calls.
+  pub fn measure_all(
+    &self,
+    measurement_interval: Duration,
+  ) -> impl Iterator<Item = (&'static str, Duration)> + '_ {
+    let now = Instant::now();
+    let table = &self.table;
+    let keys = self.keys.lock().unwrap();
+    let mut idx = 0;
+    std::iter::from_fn(move || {
+      let &system = keys.get(idx)?;
+      idx += 1;
+
+      let m = table.get_mut(system)?.measure(measurement_interval, now);
+      Some((system, m))
+    })
   }
 }
 
@@ -167,14 +178,32 @@ impl TimerInner {
       last_measurement: Instant::now(),
     }
   }
+
+  fn measure(&mut self, interval: Duration, now: Instant) -> Duration {
+    if now - self.last_measurement < interval {
+      return self.timing;
+    }
+
+    let timing = self.raw_time / self.measurements;
+    self.timing = timing;
+    self.raw_time = Duration::default();
+    self.last_measurement = now;
+    self.measurements = 0;
+    timing
+  }
 }
 
 /// A guard for a [`SystemTimer::start()`] call.
-pub struct SystemTimerGuard<'a>(Option<MutexGuard<'a, TimerInner>>);
+pub struct SystemTimerGuard<'a>(&'a SystemTimer, &'static str);
+
+impl SystemTimerGuard<'_> {
+  /// Finishes a timing early.
+  pub fn finish(self) {}
+}
 
 impl Drop for SystemTimerGuard<'_> {
   fn drop(&mut self) {
-    if let Some(inner) = &mut self.0 {
+    if let Some(mut inner) = self.0.table.get_mut(self.1) {
       let elapsed = inner.last_start.elapsed();
       inner.total_time += elapsed;
       inner.raw_time += elapsed;

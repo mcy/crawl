@@ -143,13 +143,10 @@ fn main() {
   bar.push(WType::Spacer(None), 40);
   bar.push(WType::Gold, 50);
 
-  let mut timer = SystemTimer::new();
-  timer.register("process_visibility");
-
   let mut resources = Resources::default();
   resources.insert(Mutex::new(render::curses::Curses::init()));
   resources.insert(FrameTimer::new());
-  resources.insert(timer);
+  resources.insert(SystemTimer::new());
   resources.insert(floor);
   resources.insert(input::UserInput::new());
   resources.insert(Renderer::new());
@@ -172,7 +169,7 @@ fn main() {
     world: &mut SubWorld,
     #[resource] floor: &Floor,
     #[resource] input: &input::UserInput,
-    #[resource] timer: &mut SystemTimer,
+    #[resource] timer: &SystemTimer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
     let _t = timer.start("process_input");
@@ -234,12 +231,13 @@ fn main() {
   fn render(
     world: &SubWorld,
     #[resource] frame_timer: &mut FrameTimer,
-    #[resource] timer: &mut SystemTimer,
+    #[resource] timer: &SystemTimer,
     #[resource] floor: &Floor,
     #[resource] window: &Mutex<render::curses::Curses>,
     #[resource] renderer: &mut Renderer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
+    let t = timer.start("render");
     let camera = <&Position>::query()
       .filter(query::component::<HasCamera>())
       .iter(world)
@@ -286,12 +284,16 @@ fn main() {
     let count = frame_timer.frame_count();
     scene.debug(format!("fps: {:.2}, count: {}", fps, count));
 
-    scene.debug(format!(
-      "vis: {:.2}us",
-      timer
-        .measure("process_visibility", Duration::from_millis(500))
-        .as_micros()
-    ));
+    scene.debug("Timings:".into());
+    for (system, duration) in timer.measure_all(Duration::from_millis(500)) {
+      scene.debug(format!(
+        " {}: {:.4}ms",
+        system,
+        duration.as_secs_f64() * 1000.0
+      ));
+    }
+    t.finish();
+    let _t = timer.start("renderer.bake()");
 
     let mut window = window.lock().unwrap();
     renderer.bake(scene, &mut *window);
