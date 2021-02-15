@@ -69,8 +69,8 @@ impl FrameTimer {
   }
 }
 
-/// A timer for measuring the average time spent on a particular operation,
-/// for computing debug timings.
+/// A timer for measuring the average time spent on a particular operation
+/// per frame, for computing debug timings.
 ///
 /// This timer can keep track of several different operations, each of which is
 /// tracked by a string "tag", such as `my_system.foo`.
@@ -115,30 +115,15 @@ impl SystemTimer {
       .unwrap_or_default()
   }
 
-  /// Measures the average measured time since the last sampling interval
-  /// for `system`.
-  ///
-  /// This function performs an averating operation after `measurement_interval`
-  /// has elapsed since it was last called, and caches the measurement in
-  /// between calls.
-  pub fn measure(
-    &self,
-    system: &'static str,
-    measurement_interval: Duration,
-  ) -> Duration {
-    match self.table.get_mut(system) {
-      Some(mut inner) => inner.measure(measurement_interval, Instant::now()),
-      None => Duration::default(),
-    }
-  }
-
   /// Measure the average measure time since the last sampling interval for
   /// every system tracked by `self`.
   ///
   /// This function performs an averating operation after `measurement_interval`
   /// has elapsed since it was last called, and caches the measurement in
   /// between calls.
-  pub fn measure_all(
+  ///
+  /// When using this function, it should be called once per frame.
+  pub fn measure(
     &self,
     measurement_interval: Duration,
   ) -> impl Iterator<Item = (&'static str, Duration)> + '_ {
@@ -160,7 +145,7 @@ struct TimerInner {
   last_start: Instant,
   total_time: Duration,
   raw_time: Duration,
-  measurements: u32,
+  frames: u32,
 
   timing: Duration,
   last_measurement: Instant,
@@ -172,7 +157,7 @@ impl TimerInner {
       last_start: Instant::now(),
       total_time: Duration::default(),
       raw_time: Duration::default(),
-      measurements: 0,
+      frames: 1,
 
       timing: Duration::default(),
       last_measurement: Instant::now(),
@@ -180,16 +165,14 @@ impl TimerInner {
   }
 
   fn measure(&mut self, interval: Duration, now: Instant) -> Duration {
-    if now - self.last_measurement < interval {
-      return self.timing;
+    if now - self.last_measurement >= interval {
+      self.timing = self.raw_time / self.frames;
+      self.raw_time = Duration::default();
+      self.last_measurement = now;
+      self.frames = 0;
     }
-
-    let timing = self.raw_time / self.measurements;
-    self.timing = timing;
-    self.raw_time = Duration::default();
-    self.last_measurement = now;
-    self.measurements = 0;
-    timing
+    self.frames += 1;
+    self.timing
   }
 }
 
@@ -207,7 +190,6 @@ impl Drop for SystemTimerGuard<'_> {
       let elapsed = inner.last_start.elapsed();
       inner.total_time += elapsed;
       inner.raw_time += elapsed;
-      inner.measurements += 1;
     }
   }
 }

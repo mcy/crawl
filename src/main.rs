@@ -326,7 +326,7 @@ fn main() {
     scene.debug(format!("fps: {:.2}, count: {}", fps, count));
 
     scene.debug("Timings:".into());
-    for (system, duration) in timer.measure_all(Duration::from_millis(500)) {
+    for (system, duration) in timer.measure(Duration::from_millis(500)) {
       scene.debug(format!(
         " {}: {:.4}ms",
         system,
