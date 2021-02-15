@@ -14,6 +14,7 @@ use num::Zero;
 mod impls;
 
 pub mod fov;
+pub mod graph;
 
 /// A direction on the plane.
 ///
@@ -85,6 +86,14 @@ impl<T> Point<T> {
       total = total + self[i] * other[i];
     }
     total
+  }
+
+  /// Computes the Manhattan norm of `self`.
+  pub fn manhattan(self) -> T
+  where
+    T: Signed + Copy,
+  {
+    self.x().abs() + self.y().abs()
   }
 
   /// Componentwise orders the coordinates of `self` and `other`.

@@ -17,8 +17,8 @@ pub mod ui;
 fn main() {
   use crate::actor::*;
   use crate::geo::*;
-  use crate::map::*;
   use crate::gfx::texel::*;
+  use crate::map::*;
   use crate::timing::*;
   use crate::ui::widget::*;
 
@@ -29,11 +29,20 @@ fn main() {
   use legion::Schedule;
   use legion::World;
 
+  let mut floor = Floor::new();
+  floor.rooms_and_corridors(
+    50,
+    Rect::with_dims(200, 200).centered_on(Point::zero()),
+    Point::new(10, 10),
+    Point::new(30, 30),
+  );
+  let rooms = floor.rooms();
+
   let mut world = World::default();
   world.push((
     Player,
     HasCamera,
-    Position(Point::zero()),
+    Position(rooms[0].center()),
     Tangible,
     Fov {
       range: Point::new(20, 10),
@@ -43,13 +52,19 @@ fn main() {
     Sprite(Texel::new('@')),
   ));
 
-  let mut floor = Floor::new();
-  floor.rooms_and_corridors(
-    50,
-    Rect::with_dims(200, 200).centered_on(Point::zero()),
-    Point::new(10, 10),
-    Point::new(30, 30),
-  );
+  for room in &rooms[1..] {
+    world.push((
+      Position(room.center()),
+      Tangible,
+      Fov {
+        range: Point::new(20, 10),
+        visible: HashSet::new(),
+        seen: HashSet::new(),
+      },
+      Sprite(Texel::new('K')),
+      ai::Pathfind::new(),
+    ));
+  }
 
   #[allow(unused)]
   struct WState {
@@ -146,6 +161,7 @@ fn main() {
   resources.insert(SystemTimer::new());
   resources.insert(floor);
   resources.insert(input::UserInput::new());
+  resources.insert(actor::ai::TurnMode::Waiting);
   resources.insert(gfx::Renderer::new());
   resources.insert(bar);
 
@@ -159,36 +175,52 @@ fn main() {
     }
   }
 
-  #[legion::system]
-  #[read_component(Player)]
+  #[legion::system(for_each)]
   #[write_component(Position)]
+  #[filter(legion::component::<Player>())]
   fn process_input(
-    world: &mut SubWorld,
+    &mut Position(ref mut pos): &mut Position,
     #[resource] floor: &Floor,
     #[resource] input: &input::UserInput,
     #[resource] timer: &SystemTimer,
-    #[resource] widget_bar: &mut WidgetBar<WType>,
+    #[resource] turn_mode: &mut actor::ai::TurnMode,
   ) {
-    let _t = timer.start("process_input");
+    let _t = timer.start("process_input()");
+
     let dirs = &[
       (input::KeyCode::Char('a'), Point::new(-1, 0)),
       (input::KeyCode::Char('d'), Point::new(1, 0)),
       (input::KeyCode::Char('w'), Point::new(0, -1)),
       (input::KeyCode::Char('s'), Point::new(0, 1)),
+      (input::KeyCode::Char('f'), Point::new(0, 0)),
     ];
 
-    for (pos, _) in <(&mut Position, &Player)>::query().iter_mut(world) {
-      for &(k, dir) in dirs {
-        if input.has_key(k) {
-          let new_pos = pos.0 + dir;
-          match floor.chunk(new_pos).unwrap().tile(new_pos) {
-            Tile::Wall | Tile::Void => continue,
-            _ => {}
-          };
-          pos.0 += dir;
-        }
+    for &(k, dir) in dirs {
+      if input.has_key(k) {
+        let new_pos = *pos + dir;
+        match floor.chunk(new_pos).unwrap().tile(new_pos) {
+          Tile::Wall | Tile::Void => continue,
+          _ => {}
+        };
+        *pos += dir;
+        *turn_mode = actor::ai::TurnMode::Running;
       }
-      widget_bar.state_mut().pos = pos.0;
+    }
+  }
+
+  #[legion::system(for_each)]
+  #[read_component(Position)]
+  #[filter(legion::component::<Player>())]
+  fn update_widgets(
+    &Position(pos): &Position,
+    #[resource] timer: &SystemTimer,
+    #[resource] widget_bar: &mut WidgetBar<WType>,
+  ) {
+    let _t = timer.start("update_widgets()");
+
+    let state = widget_bar.state_mut();
+    if state.pos != pos {
+      state.pos = pos;
       widget_bar.mark_dirty();
     }
   }
@@ -197,15 +229,15 @@ fn main() {
   #[read_component(Position)]
   #[write_component(Fov)]
   fn process_visibility(
-    pos: &Position,
+    &Position(pos): &Position,
     fov: &mut Fov,
     #[resource] floor: &Floor,
-    #[resource] timer: &mut SystemTimer,
+    #[resource] timer: &SystemTimer,
   ) {
-    let _t = timer.start("process_visibility");
+    let _t = timer.start("process_visibility()");
     fov.visible.clear();
     geo::fov::milazzo(
-      pos.0,
+      pos,
       fov.range,
       &mut |p| {
         floor
@@ -225,6 +257,7 @@ fn main() {
   #[read_component(Position)]
   #[read_component(Sprite)]
   #[read_component(Fov)]
+  #[read_component(ai::Pathfind)]
   fn render(
     world: &SubWorld,
     #[resource] frame_timer: &mut FrameTimer,
@@ -234,7 +267,7 @@ fn main() {
     #[resource] renderer: &mut gfx::Renderer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
-    let t = timer.start("render");
+    let t = timer.start("render()");
     let camera = <&Position>::query()
       .filter(query::component::<HasCamera>())
       .iter(world)
@@ -256,11 +289,15 @@ fn main() {
       sprite_layer
         .push(RectVec::new(Rect::with_dims(1, 1).centered_on(pos.0), *tx));
     }
+
     sprite_layer.finish();
 
     let mut fov_layer = scene.image_layer(2);
     let mut fov_mask = RectVec::new(viewport, Texel::new(' '));
-    for fov in <&Fov>::query().iter(world) {
+    for fov in <&Fov>::query()
+      .filter(legion::component::<Player>())
+      .iter(world)
+    {
       for p in &fov.seen {
         fov_mask
           .get_mut(*p)
@@ -307,9 +344,12 @@ fn main() {
     .add_system(input::start_frame_system())
     .add_system(quit_system())
     .add_system(process_input_system())
+    .add_system(update_widgets_system())
     .flush()
     .add_system(process_visibility_system())
+    .add_system(actor::ai::pathfind_system())
     .flush()
+    .add_system(actor::ai::end_turn_system())
     .add_system(render_system())
     .build();
 

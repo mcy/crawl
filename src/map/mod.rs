@@ -79,12 +79,15 @@ pub struct Floor {
   // Invariant: keys are always multiples of WIDTH, rounding towards negative
   // infinity.
   chunks: HashMap<Point, Chunk>,
+
+  rooms: Vec<Rect>,
 }
 
 impl Floor {
   pub fn new() -> Floor {
     Floor {
       chunks: HashMap::new(),
+      rooms: Vec::new(),
     }
   }
 
@@ -107,6 +110,10 @@ impl Floor {
     rect
       .disect(Rect::with_dims(WIDTH as i64, WIDTH as i64))
       .filter_map(move |r| self.chunk(r.corners().0).map(move |c| (r, c)))
+  }
+
+  pub fn rooms(&self) -> &[Rect] {
+    &self.rooms
   }
 
   pub fn add_room(&mut self, room: Rect) {
@@ -167,7 +174,6 @@ impl Floor {
   ) {
     let mut rng = rand::thread_rng();
 
-    let mut rooms = Vec::<Rect>::new();
     for _ in 0..count {
       let (start, end) = bounds.corners();
       let x = Uniform::new(start.x(), end.x()).sample(&mut rng);
@@ -177,13 +183,13 @@ impl Floor {
       let h = Uniform::new(min_size.x(), max_size.y()).sample(&mut rng);
 
       let room = Rect::with_dims(w as _, h as _).centered_on(Point::new(x, y));
-      if rooms.iter().any(|r| r.intersect(room).is_some()) {
+      if self.rooms.iter().any(|r| r.intersect(room).is_some()) {
         continue;
       }
 
       self.add_room(room);
 
-      if let Some(prev) = rooms.last() {
+      if let Some(prev) = self.rooms.last().cloned() {
         let x: f64 = Open01.sample(&mut rng);
         if x > 0.7 {
           continue;
@@ -206,7 +212,7 @@ impl Floor {
         }
       }
 
-      rooms.push(room);
+      self.rooms.push(room);
     }
   }
 }

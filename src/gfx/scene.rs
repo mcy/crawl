@@ -1,5 +1,5 @@
 //! Scene-building.
-//! 
+//!
 //! A [`Scene`] represents all the data necessary to build and render an
 //! ASCII-art frame of the game.
 
@@ -8,8 +8,8 @@ use std::mem;
 use crate::geo::Point;
 use crate::geo::Rect;
 use crate::geo::RectVec;
-use crate::gfx::texel::Texel;
 use crate::gfx::curses;
+use crate::gfx::texel::Texel;
 
 /// An unbaked scene.
 ///

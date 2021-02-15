@@ -3,11 +3,11 @@
 use std::mem;
 
 use crate::geo::RectVec;
+use crate::gfx::curses::Curses;
+use crate::gfx::scene::Layer;
 use crate::gfx::texel;
 use crate::gfx::texel::Texel;
 use crate::gfx::Scene;
-use crate::gfx::scene::Layer;
-use crate::gfx::curses::Curses;
 
 /// A global rendering context.
 ///

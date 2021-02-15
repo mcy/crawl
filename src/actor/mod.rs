@@ -5,19 +5,22 @@ use std::collections::HashSet;
 use crate::geo::Point;
 use crate::gfx::texel::Texel;
 
-/// A "player" actor.
+pub mod ai;
+
+/// Component: A "player" actor.
 pub struct Player;
 
-/// An actor currently holding the camera's focus.
+/// Component: If this entity has a [`Position`], the renderer camera will focus
+/// on it.
 pub struct HasCamera;
 
-/// An actor with a position.
+/// Component: An actor with a position.
 pub struct Position(pub Point<i64>);
 
-/// A tangile actor (i.e., one with collision).
+/// Component: A tangile actor (i.e., one with collision).
 pub struct Tangible;
 
-/// An actor with a field-of-view.
+/// Component: An actor with a field-of-view.
 pub struct Fov {
   /// The radius of the FOV range.
   pub range: Point<i64>,
@@ -27,5 +30,5 @@ pub struct Fov {
   pub seen: HashSet<Point<i64>>,
 }
 
-/// An actor with a sprite.
+/// Component: An actor with a sprite.
 pub struct Sprite(pub Texel);

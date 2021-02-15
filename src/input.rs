@@ -54,7 +54,7 @@ impl UserInput {
   }
 }
 
-/// System for loading inputs from from `stdin` into a [`UserInput`] for
+/// System: Loads inputs from from `stdin` into a [`UserInput`] for
 /// processing on a given frame.
 #[legion::system]
 pub fn start_frame(
