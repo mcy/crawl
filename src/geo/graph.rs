@@ -75,7 +75,7 @@ pub fn a_star(
   while let Some(Node(_, mut current)) = open_nodes.pop() {
     if current == goal {
       // We're done, let's build a path back from the goal.
-      let mut path = Vec::new();
+      let mut path = vec![current];
       while let Some(&next) = came_from.get(&current) {
         current = next;
         path.push(current);

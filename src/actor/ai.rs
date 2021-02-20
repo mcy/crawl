@@ -1,5 +1,7 @@
 //! Actor AI components and systems.
 
+use std::collections::HashSet;
+
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
 
@@ -11,6 +13,7 @@ use legion::Entity;
 use crate::actor::Fov;
 use crate::actor::Player;
 use crate::actor::Position;
+use crate::actor::Tangible;
 use crate::geo::graph;
 use crate::geo::Point;
 use crate::map::Floor;
@@ -243,6 +246,7 @@ impl Tactic for Chase {
 #[legion::system]
 #[read_component(Fov)]
 #[read_component(Player)]
+#[read_component(Tangible)]
 #[write_component(Position)]
 #[write_component(Pathfind)]
 pub fn pathfind(
@@ -264,15 +268,30 @@ pub fn pathfind(
     pf.refresh_goal(fov, &mut rest, floor);
   }
 
+  let mut occupied = <&Position>::query()
+    .filter(component::<&Tangible>())
+    .iter(world)
+    .map(|p| p.0)
+    .collect::<HashSet<_>>();
+
   // Now, step forward all of the pathfinding AIs. This requires mutating
   // positions, but does not require splitting the world.
-  for (pf, pos) in <(&mut Pathfind, &mut Position)>::query().iter_mut(world) {
+  let mut q = <(&mut Pathfind, &mut Position, Option<&Tangible>)>::query();
+  for (pf, pos, tangible) in q.iter_mut(world) {
     if let Some(p) = pf.next_pos(pos.0, floor) {
       let is_walkable = floor
         .chunk(p)
         .map(|c| *c.tile(p) == Tile::Ground)
         .unwrap_or(false);
-      if is_walkable {
+
+      // As an optimization, we assume that there is only ever one actor in a
+      // given position, so we remove pos.0 and add p, though only if this
+      // entity is tangible!
+      if is_walkable && !occupied.contains(&pos.0) {
+        if tangible.is_some() {
+          occupied.remove(&pos.0);
+          occupied.insert(p);
+        }
         pos.0 = p;
       } else {
         pf.repath(pos.0, floor);
