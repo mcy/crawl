@@ -11,12 +11,15 @@ use crate::geo::RectVec;
 use crate::gfx::curses;
 use crate::gfx::texel::Texel;
 
+#[allow(unused)]
+use crate::gfx::Renderer;
+
 /// An unbaked scene.
 ///
 /// This type can be used for building up a scene to be rendered. The rendering
-/// itself is done with the [`gfx::Renderer`].
+/// itself is done with the [`Renderer`].
 ///
-/// See [`gfx::Renderer::bake()`].
+/// See [`Renderer::bake()`].
 #[derive(Clone, Debug)]
 pub struct Scene {
   pub(in crate::gfx) layers: Vec<(i32, Layer)>,
@@ -82,8 +85,8 @@ impl Scene {
 /// A scene layer consisting of various images.
 ///
 /// This type can be used to build an image layer in a [`Scene`]; once the layer
-/// is complete, call [`finish()`] or drop this value, and it will get added to
-/// the scene.
+/// is complete, call [`ImageLayer::finish()`] or drop this value, and it will
+/// get added to the scene.
 pub struct ImageLayer<'sc> {
   scene: &'sc mut Scene,
   priority: i32,

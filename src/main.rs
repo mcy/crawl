@@ -62,7 +62,7 @@ fn main() {
         seen: HashSet::new(),
       },
       Sprite(Texel::new('K')),
-      ai::Pathfind::new(),
+      ai::Pathfind::new(vec![Box::new(ai::Chase::new()), Box::new(ai::Wander)]),
     ));
   }
 

@@ -1,7 +1,15 @@
 //! Actor AI components and systems.
 
+use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
 
+use legion::query::component;
+use legion::query::IntoQuery;
+use legion::world::SubWorld;
+use legion::Entity;
+
+use crate::actor::Fov;
+use crate::actor::Player;
 use crate::actor::Position;
 use crate::geo::graph;
 use crate::geo::Point;
@@ -28,44 +36,69 @@ pub fn end_turn(#[resource] mode: &mut TurnMode) {
 /// Component: An actor which can pathfind to a goal.
 ///
 /// When the [`pathfind()`] system is installed, every `Pathfind` entity with a
-/// [`Postition`] will A* to its goal point. The path will only be recalculated
+/// [`Position`] will A* to its goal point. The path will only be recalculated
 /// if the entity encounters a barrier in the way.
 pub struct Pathfind {
-  pub goal: Point,
-  pub path: Vec<Point>,
+  script: Vec<Box<dyn Tactic>>,
+  goal: Option<Point>,
+  path: Vec<Point>,
 }
 
 impl Pathfind {
-  /// Creates a new `Pathfind`.
-  pub fn new() -> Self {
+  /// Creates a new `Pathfind`, using the given list of [`Tactic`]s to generate
+  /// new goals.
+  pub fn new(script: Vec<Box<dyn Tactic>>) -> Self {
     Pathfind {
-      goal: Point::zero(),
+      script,
+      goal: None,
       path: Vec::new(),
     }
   }
 
-  /// Instructs the AI to walk to a random room in `floor`.
-  pub fn random_walk(&mut self, floor: &Floor) {
-    if let Some(room) = floor.rooms().choose(&mut rand::thread_rng()) {
-      self.goal = room.center();
+  /// Re-runs this `Pathfind`'s goal-finding script.
+  ///
+  /// This function goes through each [`Tactic`] in the script, trying to find
+  /// one which produces a new goal.
+  pub fn refresh_goal(
+    &mut self,
+    fov: Option<&Fov>,
+    world: &mut SubWorld,
+    floor: &Floor,
+  ) {
+    for tactic in &mut self.script {
+      if self.goal.is_some() && !tactic.run_always() {
+        continue;
+      }
+
+      if let Some(goal) = tactic.generate_goal(fov, world, floor) {
+        let requires_repath = self.goal != Some(goal);
+        self.goal = Some(goal);
+        if requires_repath {
+          self.path.clear();
+        }
+        return;
+      }
     }
   }
 
   /// Recomputes the path towards this `Pathfind`'s goal.
   pub fn repath(&mut self, current: Point, floor: &Floor) {
-    self.path = graph::manhattan_a_star(current, self.goal, |p| {
-      floor
-        .chunk(p)
-        .map(|c| *c.tile(p) == Tile::Ground)
-        .unwrap_or(false)
-    })
-    .unwrap_or(Vec::new());
+    if let Some(goal) = self.goal {
+      self.path = graph::manhattan_a_star(current, goal, |p| {
+        floor
+          .chunk(p)
+          .map(|c| *c.tile(p) == Tile::Ground)
+          .unwrap_or(false)
+      })
+      .unwrap_or(Vec::new());
+    }
   }
 
   /// Computes the next point that the entity should walk to, if one is
   /// available.
   pub fn next_pos(&mut self, current: Point, floor: &Floor) -> Option<Point> {
-    if self.goal == current {
+    if self.goal.is_none() || self.goal == Some(current) {
+      self.goal = None;
       return None;
     }
 
@@ -76,17 +109,144 @@ impl Pathfind {
     }
 
     self.path.pop();
-    self.path.last().cloned()
+    let next = self.path.last().cloned();
+    if self.path.is_empty() {
+      // We're done; make sure we can generate a new goal!
+      self.goal = None;
+    }
+    next
+  }
+}
+
+/// An AI tactic that uses information about the world to build goals to work
+/// towards.
+pub trait Tactic: Send + Sync {
+  /// Whether to re-execute this tactic every simulation step.
+  ///
+  /// This should return `true` when the goal target (such as a moving entity)
+  /// might change every tick.
+  fn run_always(&self) -> bool {
+    false
+  }
+
+  /// Attempts to generate a new goal, using the provided information.
+  ///
+  /// `fov` is the FOV of the current actor.
+  /// `world` has acccess to all components that are readable by [`pathfind()`],
+  /// except for [`Pathfind`] components.
+  fn generate_goal(
+    &mut self,
+    fov: Option<&Fov>,
+    world: &mut SubWorld,
+    floor: &Floor,
+  ) -> Option<Point>;
+}
+
+// `Tactic` is object safe!
+impl dyn Tactic {}
+
+/// A tactic that causes the entity to aimlessly wander around the floor.
+///
+/// Every time a new goal is needed, it picks a random point of a random room,
+/// and A*s to it.
+pub struct Wander;
+impl Tactic for Wander {
+  fn generate_goal(
+    &mut self,
+    _: Option<&Fov>,
+    _: &mut SubWorld,
+    floor: &Floor,
+  ) -> Option<Point> {
+    let mut rng = rand::thread_rng();
+    let room = floor.rooms().choose(&mut rng)?;
+    room.points().choose(&mut rng)
+  }
+}
+
+/// A tactic for chasing a player in-view of the entity.
+///
+/// This goal is executed
+pub struct Chase {
+  target: Option<Entity>,
+}
+impl Chase {
+  /// Creates a new `Chase`.
+  pub fn new() -> Self {
+    Self { target: None }
+  }
+}
+impl Tactic for Chase {
+  fn run_always(&self) -> bool {
+    true
+  }
+  fn generate_goal(
+    &mut self,
+    fov: Option<&Fov>,
+    world: &mut SubWorld,
+    _: &Floor,
+  ) -> Option<Point> {
+    // First, check whether the entity we're chasing (if any) is currently in
+    // sight. If not, delete it.
+    fn check_if_visible(
+      entity: Option<Entity>,
+      fov: Option<&Fov>,
+      world: &mut SubWorld,
+    ) -> Option<Entity> {
+      let entity = entity?;
+      let mut query = <&Position>::query().filter(component::<Player>());
+      let pos = query.get(world, entity).ok()?;
+
+      if let Some(fov) = fov {
+        if fov.visible.contains(&pos.0) {
+          Some(entity)
+        } else {
+          None
+        }
+      } else {
+        // In this case, the entity has no Fov component, making it
+        // "omniscient".
+        Some(entity)
+      }
+    }
+    self.target = check_if_visible(self.target, fov, world);
+
+    // Now, if there *isn't* a target, go and check if there is one we can use
+    if self.target.is_none() {
+      'outer: for chunk in <&Position>::query()
+        .filter(component::<Player>())
+        .iter_chunks(world)
+      {
+        for (entity, pos) in chunk.into_iter_entities() {
+          if let Some(fov) = fov {
+            if fov.visible.contains(&pos.0) {
+              self.target = Some(entity);
+              break 'outer;
+            }
+          } else {
+            // In this case, the entity has no Fov component, making it
+            // "omniscient".
+            self.target = Some(entity);
+            break 'outer;
+          }
+        }
+      }
+    }
+
+    // Finally, if we *do* have an entity, use its position as our goal.
+    self
+      .target
+      .and_then(|e| Some(<&Position>::query().get(world, e).ok()?.0))
   }
 }
 
 /// System: Steps forward the AI for each every [`Pathfind`] entity.
-#[legion::system(for_each)]
+#[legion::system]
+#[read_component(Fov)]
+#[read_component(Player)]
 #[write_component(Position)]
 #[write_component(Pathfind)]
 pub fn pathfind(
-  pos: &mut Position,
-  pf: &mut Pathfind,
+  world: &mut SubWorld,
   #[resource] floor: &Floor,
   #[resource] mode: &TurnMode,
   #[resource] timer: &SystemTimer,
@@ -96,8 +256,18 @@ pub fn pathfind(
     return;
   }
 
-  match pf.next_pos(pos.0, floor) {
-    Some(p) => {
+  // First, kick all of the scripts to generate new goals, if necessary. This
+  // does *not* mutate positions.
+  let mut query = <(&mut Pathfind, Option<&Fov>)>::query();
+  let (mut query_world, mut rest) = world.split_for_query(&query);
+  for (pf, fov) in query.iter_mut(&mut query_world) {
+    pf.refresh_goal(fov, &mut rest, floor);
+  }
+
+  // Now, step forward all of the pathfinding AIs. This requires mutating
+  // positions, but does not require splitting the world.
+  for (pf, pos) in <(&mut Pathfind, &mut Position)>::query().iter_mut(world) {
+    if let Some(p) = pf.next_pos(pos.0, floor) {
       let is_walkable = floor
         .chunk(p)
         .map(|c| *c.tile(p) == Tile::Ground)
@@ -108,6 +278,5 @@ pub fn pathfind(
         pf.repath(pos.0, floor);
       }
     }
-    None => pf.random_walk(floor),
   }
 }

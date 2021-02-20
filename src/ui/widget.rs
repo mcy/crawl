@@ -87,15 +87,16 @@ impl<W: Widget> WidgetBar<W> {
 
   /// Returns a reference to the widgets' shared state.
   ///
-  /// Note that [`mark_dirty()`] should be called to trigger a layout reflow
-  /// if the state changes.
+  /// Note that [`WidgetBar::mark_dirty()`] should be called to trigger a layout
+  /// reflow if the state changes.
   pub fn state(&self) -> &W::State {
     &self.state
   }
 
   /// Returns a reference to the widgets' shared state.
   ///
-  /// Note that [`mark_dirty()`] should be called to trigger a layout reflow.
+  /// Note that [`WidgetBar::mark_dirty()`] should be called to trigger a layout
+  /// reflow.
   pub fn state_mut(&mut self) -> &mut W::State {
     &mut self.state
   }
