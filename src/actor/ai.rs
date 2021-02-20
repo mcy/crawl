@@ -85,9 +85,10 @@ impl Pathfind {
   }
 
   /// Recomputes the path towards this `Pathfind`'s goal.
-  pub fn repath(&mut self, current: Point, floor: &Floor) {
+  pub fn repath(&mut self, current: Point, floor: &Floor, _occupied: &HashSet<Point>) {
     if let Some(goal) = self.goal {
       self.path = graph::manhattan_a_star(current, goal, |p| {
+        // !occupied.contains(&p) &&
         floor
           .chunk(p)
           .map(|c| *c.tile(p) == Tile::Ground)
@@ -99,7 +100,7 @@ impl Pathfind {
 
   /// Computes the next point that the entity should walk to, if one is
   /// available.
-  pub fn next_pos(&mut self, current: Point, floor: &Floor) -> Option<Point> {
+  pub fn next_pos(&mut self, current: Point, floor: &Floor, occupied: &HashSet<Point>) -> Option<Point> {
     if self.goal.is_none() || self.goal == Some(current) {
       self.goal = None;
       return None;
@@ -108,7 +109,7 @@ impl Pathfind {
     // Check that the cached path is valid, which is given by our current
     // position being the last element. If it isn't, we re-path.
     if Some(&current) != self.path.last() {
-      self.repath(current, floor);
+      self.repath(current, floor, occupied);
     }
 
     self.path.pop();
@@ -269,7 +270,7 @@ pub fn pathfind(
   }
 
   let mut occupied = <&Position>::query()
-    .filter(component::<&Tangible>())
+    //.filter(component::<&Tangible>())
     .iter(world)
     .map(|p| p.0)
     .collect::<HashSet<_>>();
@@ -278,7 +279,7 @@ pub fn pathfind(
   // positions, but does not require splitting the world.
   let mut q = <(&mut Pathfind, &mut Position, Option<&Tangible>)>::query();
   for (pf, pos, tangible) in q.iter_mut(world) {
-    if let Some(p) = pf.next_pos(pos.0, floor) {
+    if let Some(p) = pf.next_pos(pos.0, floor, &occupied) {
       let is_walkable = floor
         .chunk(p)
         .map(|c| *c.tile(p) == Tile::Ground)
@@ -287,14 +288,20 @@ pub fn pathfind(
       // As an optimization, we assume that there is only ever one actor in a
       // given position, so we remove pos.0 and add p, though only if this
       // entity is tangible!
-      if is_walkable && !occupied.contains(&pos.0) {
-        if tangible.is_some() {
-          occupied.remove(&pos.0);
-          occupied.insert(p);
+      // 
+      // We try this a few times to make sure it converges, since there are
+      // situations where a previous move invalidates a path.
+      for _ in 0..3 {
+        if is_walkable && !occupied.contains(&p) {
+          if tangible.is_some() {
+            occupied.remove(&pos.0);
+            occupied.insert(p);
+          }
+          pos.0 = p;
+          break
+        } else {
+          pf.repath(pos.0, floor, &occupied);
         }
-        pos.0 = p;
-      } else {
-        pf.repath(pos.0, floor);
       }
     }
   }
