@@ -80,8 +80,7 @@ fn main() {
     Magic,
     Spacer(Option<usize>),
     Dir,
-    X,
-    Y,
+    Pos,
     Gold,
   }
 
@@ -135,23 +134,13 @@ fn main() {
           .into(),
           label_color: colors::YELLOW.into(),
         },
-        Self::X => Shape::Scalar {
-          label: "x: ".into(),
-          label_color: Color::Reset,
-          value: state.pos.x() as i32,
-          value_color: colors::CYAN.into(),
+        Self::Pos => Shape::Label {
+          label: format!("{}, {}", state.pos.x(), state.pos.y()),
+          label_color: colors::CYAN.into(),
         },
-        Self::Y => Shape::Scalar {
-          label: "y: ".into(),
-          label_color: Color::Reset,
-          value: state.pos.y() as i32,
-          value_color: colors::CYAN.into(),
-        },
-        Self::Gold => Shape::Scalar {
-          label: "$".into(),
-          label_color: Color::Reset,
-          value: state.gold as i32,
-          value_color: colors::GOLD.into(),
+        Self::Gold => Shape::Label {
+          label: format!("${}", state.gold),
+          label_color: colors::GOLD.into(),
         },
       }
     }
@@ -169,9 +158,7 @@ fn main() {
   bar.push(WType::Spacer(None), 20);
   bar.push(WType::Dir, 30);
   bar.push(WType::Spacer(Some(1)), 31);
-  bar.push(WType::X, 32);
-  bar.push(WType::Spacer(Some(1)), 33);
-  bar.push(WType::Y, 34);
+  bar.push(WType::Pos, 32);
   bar.push(WType::Spacer(None), 40);
   bar.push(WType::Gold, 50);
 

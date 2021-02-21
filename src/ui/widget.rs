@@ -287,7 +287,7 @@ pub enum Shape {
     width_range: (usize, usize),
   },
 
-  /// A single label.
+  /// A single string.
   /// ```text
   /// x: 12
   /// ```
@@ -296,22 +296,6 @@ pub enum Shape {
     label: String,
     /// The color to use for the label.
     label_color: Color,
-  },
-
-  /// A single scalar, such as a floor number or a money amount.
-  /// ```text
-  /// x: 12
-  /// ```
-  Scalar {
-    /// A label.
-    label: String,
-    /// The color to use for the label.
-    label_color: Color,
-
-    /// The value itself.
-    value: i32,
-    /// The color to use for the value.
-    value_color: Color,
   },
 
   /// Fills as much space as possible with the given texel.
@@ -347,10 +331,6 @@ impl Shape {
         let min = minimum.max(width_range.0);
         let max = minimum.max(width_range.1);
         Hint::Flex(min, Some(max))
-      }
-      Self::Scalar { label, value, .. } => {
-        let int_len = estimate_num_chars(*value);
-        Hint::Fixed(label.chars().count() + int_len)
       }
       Self::Label { label, .. } => Hint::Fixed(label.chars().count()),
       Self::Fill(_, limit) => Hint::Flex(0, *limit),
@@ -410,19 +390,6 @@ impl Shape {
           }
         }
         push_texel(*rbrack, &mut buf)?;
-      }
-      Self::Scalar {
-        label,
-        label_color,
-        value,
-        value_color,
-      } => {
-        for c in label.chars() {
-          push_texel(Texel::new(c).with_fg(*label_color), &mut buf)?;
-        }
-        for c in format!("{}", value).chars() {
-          push_texel(Texel::new(c).with_fg(*value_color), &mut buf)?;
-        }
       }
       Self::Label { label, label_color } => {
         for c in label.chars() {
