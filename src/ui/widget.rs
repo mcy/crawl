@@ -287,6 +287,17 @@ pub enum Shape {
     width_range: (usize, usize),
   },
 
+  /// A single label.
+  /// ```text
+  /// x: 12
+  /// ```
+  Label {
+    /// A label.
+    label: String,
+    /// The color to use for the label.
+    label_color: Color,
+  },
+
   /// A single scalar, such as a floor number or a money amount.
   /// ```text
   /// x: 12
@@ -327,10 +338,10 @@ impl Shape {
           let cur_len = estimate_num_chars(*cur);
           let max_len = estimate_num_chars(*max);
           // The 3 is for the brackets and the slash.
-          label.len() + cur_len + max_len + 3
+          label.chars().count() + cur_len + max_len + 3
         } else {
           // The 2 is for the brackets.
-          label.len() + 2
+          label.chars().count() + 2
         };
 
         let min = minimum.max(width_range.0);
@@ -339,8 +350,9 @@ impl Shape {
       }
       Self::Scalar { label, value, .. } => {
         let int_len = estimate_num_chars(*value);
-        Hint::Fixed(label.len() + int_len)
+        Hint::Fixed(label.chars().count() + int_len)
       }
+      Self::Label { label, .. } => Hint::Fixed(label.chars().count()),
       Self::Fill(_, limit) => Hint::Flex(0, *limit),
       Self::Hidden => Hint::Hidden,
     }
@@ -368,7 +380,7 @@ impl Shape {
           0
         };
 
-        let minimum = label.len() + 2 + bar_nums;
+        let minimum = label.chars().count() + 2 + bar_nums;
         let extra = buf.len().saturating_sub(minimum);
         let mut filled = (bar_nums + extra) * *cur as usize / *max as usize;
         let mut fill_tx = || {
@@ -410,6 +422,11 @@ impl Shape {
         }
         for c in format!("{}", value).chars() {
           push_texel(Texel::new(c).with_fg(*value_color), &mut buf)?;
+        }
+      }
+      Self::Label { label, label_color } => {
+        for c in label.chars() {
+          push_texel(Texel::new(c).with_fg(*label_color), &mut buf)?;
         }
       }
       Self::Fill(t, _) => {

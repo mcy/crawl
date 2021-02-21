@@ -3,10 +3,12 @@
 use std::mem;
 use std::ops::Add;
 use std::ops::Mul;
+use std::ops::Neg;
 use std::ops::Range;
 
 use num::FromPrimitive;
 use num::Integer;
+use num::One;
 use num::Signed;
 use num::ToPrimitive;
 use num::Zero;
@@ -16,16 +18,62 @@ mod impls;
 pub mod fov;
 pub mod graph;
 
-/// A direction on the plane.
-///
-/// We use the following convention for coordinates: x increases to the right
-/// direction, and y in the downwards direction.
+/// A cardinal direction on the plane.
+/// 
+/// There are eight cardinal directions: eight orthgonal, eight diagonal.
 #[allow(missing_docs)]
-pub enum Direction {
-  Up,
-  Down,
-  Left,
-  Right,
+#[rustfmt::skip]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum Dir {
+  N, W, E, S,
+  Nw, Ne, Sw, Se,
+}
+
+impl Dir {
+  /// Returns a vector point in the direction described by `self`.
+  ///
+  /// The coordinates of the returned point will be zero, one, or minus one.
+  pub fn to_point<T>(self) -> Point<T>
+  where
+    T: Zero + One + Neg<Output = T>,
+  {
+    use Dir::*;
+    let x = match self {
+      W | Nw | Sw => T::one().neg(),
+      E | Ne | Se => T::one(),
+      _ => T::zero(),
+    };
+    let y = match self {
+      N | Nw | Ne => T::one().neg(),
+      S | Sw | Se => T::one(),
+      _ => T::zero(),
+    };
+
+    Point::new(x, y)
+  }
+
+  /// Returns whether `self` is an orthgonal direction.
+  pub fn is_ortho(self) -> bool {
+    use Dir::*;
+    matches!(self, N | W | E | S)
+  }
+
+  /// Returns whether `self` is a diagonal direction.
+  pub fn is_diag(self) -> bool {
+    !self.is_ortho()
+  }
+
+  /// Returns an array of all the directions in an unspecified order.
+  pub fn all() -> [Dir; 8] {
+    use Dir::*;
+    [N, W, E, S, Nw, Ne, Sw, Se]
+  }
+}
+
+impl<T: Zero + One + Neg<Output = T>> From<Dir> for Point<T> {
+  fn from(d: Dir) -> Self {
+    d.to_point()
+  }
 }
 
 /// A two-dimensional point.

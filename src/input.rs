@@ -19,7 +19,8 @@ pub use crossterm::event::KeyModifiers;
 /// At the begining of each frame [`start_frame()`] should be called to load up
 /// that frame's inputs from `stdin`.
 pub struct UserInput {
-  keys: HashSet<KeyEvent>,
+  keys: HashSet<KeyCode>,
+  mods: KeyModifiers,
 }
 
 impl UserInput {
@@ -27,14 +28,18 @@ impl UserInput {
   pub fn new() -> Self {
     Self {
       keys: HashSet::new(),
+      mods: KeyModifiers::empty(),
     }
   }
 
   /// Checks whether `code` was pressed this frame.
   pub fn has_key(&self, code: KeyCode) -> bool {
-    self
-      .keys
-      .contains(&KeyEvent::new(code, KeyModifiers::empty()))
+    self.keys.contains(&code)
+  }
+
+  /// Checks whether `mod` was held this frame.
+  pub fn has_mod(&self, m: KeyModifiers) -> bool {
+    self.mods.contains(m)
   }
 
   /// Clears internal buffers and collects new inputs from `stdin`.
@@ -45,9 +50,17 @@ impl UserInput {
     use crossterm::event;
 
     self.keys.clear();
+    self.mods = KeyModifiers::empty();
     while event::poll(Duration::default()).unwrap() {
       match event::read().unwrap() {
-        event::Event::Key(e) => self.keys.insert(e),
+        event::Event::Key(e) => {
+          let code = match e.code {
+            KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
+            k => k,
+          };
+          self.keys.insert(code);
+          self.mods |= e.modifiers;
+        }
         _ => continue,
       };
     }

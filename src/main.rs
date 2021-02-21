@@ -43,6 +43,7 @@ fn main() {
     Player,
     HasCamera,
     Position(rooms[0].center()),
+    Oriented(Dir::S),
     Tangible,
     Fov {
       range: Point::new(20, 10),
@@ -70,6 +71,7 @@ fn main() {
   struct WState {
     health: u32,
     pos: Point,
+    dir: Dir,
     gold: u32,
   }
 
@@ -77,6 +79,7 @@ fn main() {
     Health,
     Magic,
     Spacer(Option<usize>),
+    Dir,
     X,
     Y,
     Gold,
@@ -118,6 +121,20 @@ fn main() {
           include_digits: false,
         },
         Self::Spacer(limit) => Shape::Fill(Texel::empty(), *limit),
+        Self::Dir => Shape::Label {
+          label: match state.dir {
+            Dir::N => "^",
+            Dir::W => "<",
+            Dir::E => ">",
+            Dir::S => "v",
+            Dir::Nw => "<^",
+            Dir::Ne => "^>",
+            Dir::Sw => "<v",
+            Dir::Se => "v>",
+          }
+          .into(),
+          label_color: colors::YELLOW.into(),
+        },
         Self::X => Shape::Scalar {
           label: "x: ".into(),
           label_color: Color::Reset,
@@ -143,15 +160,18 @@ fn main() {
   let mut bar = WidgetBar::new(WState {
     health: 55,
     pos: Point::zero(),
+    dir: Dir::S,
     gold: 42,
   });
   bar.push(WType::Health, 10);
   bar.push(WType::Spacer(Some(1)), 11);
   bar.push(WType::Magic, 12);
   bar.push(WType::Spacer(None), 20);
-  bar.push(WType::X, 30);
+  bar.push(WType::Dir, 30);
   bar.push(WType::Spacer(Some(1)), 31);
-  bar.push(WType::Y, 32);
+  bar.push(WType::X, 32);
+  bar.push(WType::Spacer(Some(1)), 33);
+  bar.push(WType::Y, 34);
   bar.push(WType::Spacer(None), 40);
   bar.push(WType::Gold, 50);
 
@@ -170,49 +190,18 @@ fn main() {
     #[resource] input: &mut input::UserInput,
     #[resource] window: &mut gfx::Curses,
   ) {
-    if input.has_key(input::KeyCode::Char('q')) {
+    if input.has_key(input::KeyCode::F(1)) {
       window.die(0);
     }
   }
 
   #[legion::system(for_each)]
-  #[write_component(Position)]
-  #[filter(legion::component::<Player>())]
-  fn process_input(
-    &mut Position(ref mut pos): &mut Position,
-    #[resource] floor: &Floor,
-    #[resource] input: &input::UserInput,
-    #[resource] timer: &SystemTimer,
-    #[resource] turn_mode: &mut actor::ai::TurnMode,
-  ) {
-    let _t = timer.start("process_input()");
-
-    let dirs = &[
-      (input::KeyCode::Char('a'), Point::new(-1, 0)),
-      (input::KeyCode::Char('d'), Point::new(1, 0)),
-      (input::KeyCode::Char('w'), Point::new(0, -1)),
-      (input::KeyCode::Char('s'), Point::new(0, 1)),
-      (input::KeyCode::Char('f'), Point::new(0, 0)),
-    ];
-
-    for &(k, dir) in dirs {
-      if input.has_key(k) {
-        let new_pos = *pos + dir;
-        match floor.chunk(new_pos).unwrap().tile(new_pos) {
-          Tile::Wall | Tile::Void => continue,
-          _ => {}
-        };
-        *pos += dir;
-        *turn_mode = actor::ai::TurnMode::Running;
-      }
-    }
-  }
-
-  #[legion::system(for_each)]
   #[read_component(Position)]
+  #[read_component(Oriented)]
   #[filter(legion::component::<Player>())]
   fn update_widgets(
     &Position(pos): &Position,
+    &Oriented(dir): &Oriented,
     #[resource] timer: &SystemTimer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
@@ -221,6 +210,12 @@ fn main() {
     let state = widget_bar.state_mut();
     if state.pos != pos {
       state.pos = pos;
+      widget_bar.mark_dirty();
+    }
+
+    let state = widget_bar.state_mut();
+    if state.dir != dir {
+      state.dir = dir;
       widget_bar.mark_dirty();
     }
   }
@@ -343,7 +338,7 @@ fn main() {
   let mut schedule = Schedule::builder()
     .add_system(input::start_frame_system())
     .add_system(quit_system())
-    .add_system(process_input_system())
+    .add_system(actor::player_movement_system())
     .add_system(update_widgets_system())
     .flush()
     .add_system(process_visibility_system())

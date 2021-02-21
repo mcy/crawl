@@ -85,7 +85,12 @@ impl Pathfind {
   }
 
   /// Recomputes the path towards this `Pathfind`'s goal.
-  pub fn repath(&mut self, current: Point, floor: &Floor, _occupied: &HashSet<Point>) {
+  pub fn repath(
+    &mut self,
+    current: Point,
+    floor: &Floor,
+    _occupied: &HashSet<Point>,
+  ) {
     if let Some(goal) = self.goal {
       self.path = graph::manhattan_a_star(current, goal, |p| {
         // !occupied.contains(&p) &&
@@ -100,7 +105,12 @@ impl Pathfind {
 
   /// Computes the next point that the entity should walk to, if one is
   /// available.
-  pub fn next_pos(&mut self, current: Point, floor: &Floor, occupied: &HashSet<Point>) -> Option<Point> {
+  pub fn next_pos(
+    &mut self,
+    current: Point,
+    floor: &Floor,
+    occupied: &HashSet<Point>,
+  ) -> Option<Point> {
     if self.goal.is_none() || self.goal == Some(current) {
       self.goal = None;
       return None;
@@ -288,7 +298,7 @@ pub fn pathfind(
       // As an optimization, we assume that there is only ever one actor in a
       // given position, so we remove pos.0 and add p, though only if this
       // entity is tangible!
-      // 
+      //
       // We try this a few times to make sure it converges, since there are
       // situations where a previous move invalidates a path.
       for _ in 0..3 {
@@ -298,7 +308,7 @@ pub fn pathfind(
             occupied.insert(p);
           }
           pos.0 = p;
-          break
+          break;
         } else {
           pf.repath(pos.0, floor, &occupied);
         }

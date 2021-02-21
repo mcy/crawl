@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
 
+use crate::geo::Dir;
 use crate::geo::Point;
 
 /// Implements the A* pathfinding algorithm with Manhattan distance and
@@ -83,15 +84,8 @@ pub fn a_star(
       return Some(path);
     }
 
-    let neighbor_deltas = &[
-      Point::new(1, 0),
-      Point::new(-1, 0),
-      Point::new(0, 1),
-      Point::new(0, -1),
-    ];
-
-    for &delta in neighbor_deltas {
-      let neighbor = current + delta;
+    for &d in &Dir::all() {
+      let neighbor = current + d.to_point::<i64>();
       if !can_walk(neighbor) {
         continue;
       }
