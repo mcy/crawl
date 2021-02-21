@@ -10,12 +10,12 @@ use legion::query::IntoQuery;
 use legion::world::SubWorld;
 use legion::Entity;
 
-use crate::actor::Fov;
-use crate::actor::Player;
-use crate::actor::Position;
-use crate::actor::Tangible;
+use crate::actor::player::Player;
+use crate::actor::base::Position;
+use crate::actor::base::Tangible;
 use crate::geo::graph;
 use crate::geo::Point;
+use crate::geo::fov;
 use crate::map::Floor;
 use crate::map::Tile;
 use crate::timing::SystemTimer;
@@ -315,4 +315,43 @@ pub fn pathfind(
       }
     }
   }
+}
+
+/// Component: An actor with a field-of-view.
+pub struct Fov {
+  /// The radius of the FOV range.
+  pub range: Point<i64>,
+  /// The set of points that are currently visible.
+  pub visible: HashSet<Point<i64>>,
+  /// The set of points that have been seen.
+  pub seen: HashSet<Point<i64>>,
+}
+
+
+
+#[legion::system(for_each)]
+#[read_component(Position)]
+#[write_component(Fov)]
+pub fn update_fov(
+  &Position(pos): &Position,
+  fov: &mut Fov,
+  #[resource] floor: &Floor,
+  #[resource] timer: &SystemTimer,
+) {
+  let _t = timer.start("actor::ai::update_fov()");
+  fov.visible.clear();
+  fov::milazzo(
+    pos,
+    fov.range,
+    &mut |p| {
+      floor
+        .chunk(p)
+        .map(|c| *c.tile(p) != Tile::Ground)
+        .unwrap_or(true)
+    },
+    &mut |p| {
+      fov.visible.insert(p);
+      fov.seen.insert(p);
+    },
+  );
 }

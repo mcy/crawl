@@ -15,7 +15,6 @@ pub mod timing;
 pub mod ui;
 
 fn main() {
-  use crate::actor::*;
   use crate::geo::*;
   use crate::gfx::texel::*;
   use crate::map::*;
@@ -40,30 +39,30 @@ fn main() {
 
   let mut world = World::default();
   world.push((
-    Player,
-    HasCamera,
-    Position(rooms[0].center()),
-    Oriented(Dir::S),
-    Tangible,
-    Fov {
+    actor::player::Player,
+    actor::base::HasCamera,
+    actor::base::Position(rooms[0].center()),
+    actor::base::Oriented(Dir::S),
+    actor::base::Tangible,
+    actor::ai::Fov {
       range: Point::new(20, 10),
       visible: HashSet::new(),
       seen: HashSet::new(),
     },
-    Sprite(Texel::new('@')),
+    actor::base::Sprite(Texel::new('@')),
   ));
 
   for room in &rooms[1..] {
     world.push((
-      Position(room.center()),
-      Tangible,
-      Fov {
+      actor::base::Position(room.center()),
+      actor::base::Tangible,
+      actor::ai::Fov {
         range: Point::new(20, 10),
         visible: HashSet::new(),
         seen: HashSet::new(),
       },
-      Sprite(Texel::new('K')),
-      ai::Pathfind::new(vec![Box::new(ai::Chase::new()), Box::new(ai::Wander)]),
+      actor::base::Sprite(Texel::new('K')),
+      actor::ai::Pathfind::new(vec![Box::new(actor::ai::Chase::new()), Box::new(actor::ai::Wander)]),
     ));
   }
 
@@ -183,63 +182,36 @@ fn main() {
   }
 
   #[legion::system(for_each)]
-  #[read_component(Position)]
-  #[read_component(Oriented)]
-  #[filter(legion::component::<Player>())]
+  #[read_component(actor::base::Position)]
+  #[read_component(actor::base::Oriented)]
+  #[filter(legion::component::<actor::player::Player>())]
   fn update_widgets(
-    &Position(pos): &Position,
-    &Oriented(dir): &Oriented,
+    pos: &actor::base::Position,
+    dir: &actor::base::Oriented,
     #[resource] timer: &SystemTimer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
     let _t = timer.start("update_widgets()");
 
     let state = widget_bar.state_mut();
-    if state.pos != pos {
-      state.pos = pos;
+    if state.pos != pos.0 {
+      state.pos = pos.0;
       widget_bar.mark_dirty();
     }
 
     let state = widget_bar.state_mut();
-    if state.dir != dir {
-      state.dir = dir;
+    if state.dir != dir.0 {
+      state.dir = dir.0;
       widget_bar.mark_dirty();
     }
   }
 
-  #[legion::system(for_each)]
-  #[read_component(Position)]
-  #[write_component(Fov)]
-  fn process_visibility(
-    &Position(pos): &Position,
-    fov: &mut Fov,
-    #[resource] floor: &Floor,
-    #[resource] timer: &SystemTimer,
-  ) {
-    let _t = timer.start("process_visibility()");
-    fov.visible.clear();
-    geo::fov::milazzo(
-      pos,
-      fov.range,
-      &mut |p| {
-        floor
-          .chunk(p)
-          .map(|c| *c.tile(p) != Tile::Ground)
-          .unwrap_or(true)
-      },
-      &mut |p| {
-        fov.visible.insert(p);
-        fov.seen.insert(p);
-      },
-    );
-  }
-
   #[legion::system]
-  #[read_component(HasCamera)]
-  #[read_component(Position)]
-  #[read_component(Sprite)]
-  #[read_component(Fov)]
-  #[read_component(ai::Pathfind)]
+  #[read_component(actor::base::HasCamera)]
+  #[read_component(actor::base::Position)]
+  #[read_component(actor::base::Sprite)]
+  #[read_component(actor::ai::Fov)]
+  #[read_component(actor::ai::Pathfind)]
   fn render(
     world: &SubWorld,
     #[resource] frame_timer: &mut FrameTimer,
@@ -249,6 +221,9 @@ fn main() {
     #[resource] renderer: &mut gfx::Renderer,
     #[resource] widget_bar: &mut WidgetBar<WType>,
   ) {
+    use crate::actor::base::*;
+    use crate::actor::player::Player;
+    use crate::actor::ai::Fov;
     let t = timer.start("render()");
     let camera = <&Position>::query()
       .filter(query::component::<HasCamera>())
@@ -325,10 +300,10 @@ fn main() {
   let mut schedule = Schedule::builder()
     .add_system(input::start_frame_system())
     .add_system(quit_system())
-    .add_system(actor::player_movement_system())
+    .add_system(actor::player::player_movement_system())
     .add_system(update_widgets_system())
     .flush()
-    .add_system(process_visibility_system())
+    .add_system(actor::ai::update_fov_system())
     .add_system(actor::ai::pathfind_system())
     .flush()
     .add_system(actor::ai::end_turn_system())
